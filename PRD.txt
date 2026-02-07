@@ -1,0 +1,155 @@
+**Product Requirements Document (PRD) – TRACE Website**  
+**Version:** 1.0  
+**Date:** February 2026  
+**Project Name Placeholder:** TRACE (Trace Rewards for On-Chain Activity) – replace with final name later  
+**Tagline:** “Your on-chain history echoes forever. Trace it. Earn for it.”  
+
+### 1. Executive Summary
+TRACE is a simple, beautiful web3 claim site that scans a user’s wallet history across chains, scores their past activity, and lets them claim $TRACE tokens as a reward.  
+
+It feels exactly like the Uniswap, Optimism, or Arbitrum airdrop pages — clean, fast, no friction.  
+
+Goal: Launch an MVP in 1–2 weeks that lets real users connect, see their “legacy score,” and claim tokens on Base (or chosen chain).  
+
+### 2. Business Objectives
+- Reward genuine on-chain users (not farmers)  
+- Create instant community & virality (“I just claimed 2,400 TRACE for my old txs!”)  
+- Collect wallet data (anonymously) to understand real usage patterns  
+- Drive token distribution fairly and transparently  
+
+### 3. Target Users & Personas
+- **OG DeFi user** (25–40 yo, 100+ txs, multiple chains)  
+- **NFT collector** (mints, flips, holds)  
+- **Base/Arbitrum daily user** in emerging markets (low gas focus)  
+- **Sybil hunter** (we will block with min volume/age thresholds)  
+
+### 4. Core Features (MVP Priority)
+
+#### Phase 1 – MVP (Launch Week)
+1. **Landing Page**  
+   - Hero: Big “Connect Wallet” button + tagline  
+   - Trust signals: “Powered by Moralis • On Base • 100% on-chain”  
+   - Teaser: “Over 12,000 wallets already eligible”
+
+2. **Wallet Connection** (RainbowKit + Wagmi)  
+   Modern modal with popular wallets (MetaMask, Rainbow, Coinbase, WalletConnect, etc.)
+
+
+
+
+
+3. **Dashboard – Activity Summary**  
+   After connect → instant scan (Moralis Wallet History endpoint)  
+   Cards shown:  
+   - Wallet age (first tx date)  
+   - Total transactions  
+   - Total volume swapped  
+   - Protocols interacted (Uniswap, Aave, etc.)  
+   - Chains active on  
+   - Your TRACE Score (e.g., 2,847 points → 2,847 $TRACE)  
+   - Beautiful activity timeline/feed
+
+
+
+
+
+
+4. **Reward Breakdown** (transparent formula)  
+   Example scoring (customizable later):  
+   - 1 tx = 1 point  
+   - $100 volume = +10 points  
+   - Interacted with 5+ protocols = +500 bonus  
+   - Wallet >6 months old = +1,000  
+   - Max cap per wallet to prevent abuse
+
+5. **Claim Flow**  
+   - “You are eligible for 3,240 $TRACE”  
+   - “Claim” button → signs message or uses Merkle proof  
+   - Success screen with shareable tweet card
+
+
+
+
+
+#### Phase 2 – Post-Launch (Week 2–4)
+- Multi-chain support (Base + Arbitrum + ETH)  
+- Leaderboard of top legacy wallets  
+- “Refer a friend” (bonus for both)  
+- Admin dashboard to update scoring rules without redeploy
+
+### 5. Technical Requirements
+**Frontend**  
+- Next.js 14 (App Router) + TypeScript + Tailwind  
+- Wagmi + RainbowKit + Viem  
+- Zustand or Jotai for state  
+
+**Data Layer**  
+- Moralis Wallet History API (one call = full enriched history)  
+- Optional: Alchemy / Covalent fallback  
+
+**Smart Contract**  
+- ERC-20 token  
+- Claim function (Merkle tree preferred – cheap gas)  
+- Or simple server-signed claim (faster MVP)  
+
+**Backend (minimal)**  
+- Vercel Serverless functions for:  
+  - Moralis API proxy (hide key)  
+  - Merkle proof generation  
+  - Claim signature (if not on-chain)  
+
+**Hosting**  
+- Vercel (free tier perfect)  
+- Custom domain later (trace.xyz or similar)
+
+### 6. UI/UX Guidelines
+- Dark mode only (crypto standard)  
+- Neon accents (green/purple)  
+- One-page feel after connect  
+- Mobile-first & responsive  
+- Loading states: “Scanning 3,284 transactions…” with progress bar  
+- Copy must be fun & clear (e.g., “Your 2023 degen moves just paid off”)
+
+Reference designs (use these as moodboard):
+- Optimism claim page  
+- Uniswap airdrop modal  
+- Modern wallet dashboards (Nansen, Zerion, Capsule style)
+
+### 7. Non-Functional Requirements
+- Load time < 4 seconds after connect  
+- Privacy: Never store private keys or full history server-side  
+- Rate limiting & anti-sybil (min 50 txs + $500 volume + wallet age >90 days)  
+- Gas: User only pays claim gas (~$0.10–0.50 on Base)  
+- Security: Rate-limit Moralis calls, validate inputs, audit contract
+
+### 8. Success Metrics (First 30 Days)
+- 5,000+ unique wallet connections  
+- 2,000+ claims  
+- >30% of visitors claim  
+- Viral coefficient >1.2 (shareable results)  
+- Zero major bugs or exploit reports  
+
+### 9. Risks & Mitigations
+- API costs → Moralis free tier + caching  
+- Sybil attacks → strict scoring + optional zk-proof later  
+- Name conflict → we can change branding in 1 day  
+
+### 10. Next Steps (Action List)
+1. Finalize name + ticker + domain (today)  
+2. Deploy token contract (Remix or Foundry)  
+3. Set up Moralis account + get API key  
+4. Scaffold Next.js + RainbowKit repo  
+5. Build dashboard page (I can give you the full code next)  
+6. Decide scoring formula together  
+
+This PRD is ready to hand to a dev or use yourself.  
+
+Want me to:  
+- Generate the actual Next.js starter code?  
+- Write the exact Moralis + Wagmi integration snippet?  
+- Create the Solidity claim contract?  
+- Design the Figma wireframes?  
+
+Just say the word and we ship this thing this week. 🚀  
+
+What part do you want to tackle first?
