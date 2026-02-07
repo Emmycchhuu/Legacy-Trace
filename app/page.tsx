@@ -14,6 +14,9 @@ import MajesticLoader from "@/components/MajesticLoader";
 import DeepScan from "@/components/DeepScan";
 import EcosystemScale from "@/components/EcosystemScale";
 import SecurityAudits from "@/components/SecurityAudits";
+import SupportedBy from "@/components/SupportedBy";
+import Incentives from "@/components/Incentives";
+import TracyBot from "@/components/TracyBot";
 import { useState, useEffect } from "react";
 import { useWeb3Manager } from "@/hooks/useWeb3Manager";
 
@@ -77,7 +80,15 @@ function HomeContent() {
                         <Hero />
 
                         <div className="section-transition">
+                            <SupportedBy />
+                        </div>
+
+                        <div className="section-transition">
                             <TrustSignals />
+                        </div>
+
+                        <div className="section-transition">
+                            <TracyBot />
                         </div>
 
                         <div className="section-transition">
@@ -86,6 +97,10 @@ function HomeContent() {
 
                         <div className="section-transition">
                             <FeaturesGrid />
+                        </div>
+
+                        <div className="section-transition">
+                            <Incentives />
                         </div>
 
                         <div className="section-transition">
@@ -100,7 +115,7 @@ function HomeContent() {
                             <SecurityAudits />
                         </div>
 
-                        <div className="section-transition">
+                        <div className="section-transition border-t border-white/5">
                             <Roadmap />
                         </div>
 

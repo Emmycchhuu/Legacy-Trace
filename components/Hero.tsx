@@ -29,23 +29,23 @@ export default function Hero() {
 
                 {/* Left Content: The Majestic Pitch */}
                 <div className="text-left flex flex-col items-start order-2 lg:order-1">
-                    <div className="animate-fade-up inline-flex items-center gap-2 px-6 py-2 mb-10 border border-[#D4AF37]/20 rounded-full text-[10px] font-bold tracking-[0.5em] text-[#D4AF37] uppercase bg-[#D4AF37]/5 backdrop-blur-md">
+                    <div className="animate-fade-up inline-flex items-center gap-2 px-6 py-2 mb-8 md:mb-10 border border-[#D4AF37]/20 rounded-full text-[10px] font-bold tracking-[0.5em] text-[#D4AF37] uppercase bg-[#D4AF37]/5 backdrop-blur-md">
                         <Activity size={12} className="animate-pulse" />
                         Legacy Verification Protocol
                     </div>
 
-                    <h1 className="reveal-text text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-8 leading-[1.1] text-white">
+                    <h1 className="reveal-text text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 md:mb-8 leading-[1.1] text-white">
                         THE FUTURE OF <br />
                         <span className="gold-gradient italic text-shimmer tracking-wider uppercase">Legacy Trace</span>
                     </h1>
 
-                    <p className="animate-fade-up delay-100 text-base md:text-lg text-white/40 mb-10 leading-relaxed font-medium max-w-lg">
+                    <p className="animate-fade-up delay-100 text-sm md:text-lg text-white/40 mb-8 md:mb-10 leading-relaxed font-medium max-w-lg">
                         Your on-chain fingerprint is a digital asset. We authenticate your contributions across the <span className="text-white/80">Polygon zkEVM infrastructure</span> to secure your fair share.
                     </p>
 
                     {/* Functional Countdown */}
                     <div className="animate-fade-up delay-200 mb-10 w-full max-w-sm">
-                        <div className="glass-card p-8 border-white/5 relative overflow-hidden group">
+                        <div className="glass-card p-6 md:p-8 border-white/5 relative overflow-hidden group">
                             <div className="flex items-center gap-2 text-[#D4AF37]/60 text-[10px] font-bold tracking-[0.3em] uppercase mb-6">
                                 <Timer size={14} /> Claim Phase Starts In
                             </div>
@@ -58,7 +58,7 @@ export default function Hero() {
                                     { label: "S", val: timeLeft.seconds }
                                 ].map((item, idx) => (
                                     <div key={idx} className="flex flex-col items-center">
-                                        <div className="text-3xl md:text-4xl font-light text-white tabular-nums tracking-tighter">
+                                        <div className="text-2xl md:text-4xl font-light text-white tabular-nums tracking-tighter">
                                             {String(item.val).padStart(2, '0')}
                                         </div>
                                         <div className="text-[8px] uppercase tracking-[0.2em] text-white/20 mt-2 font-bold font-mono">
@@ -70,7 +70,7 @@ export default function Hero() {
                         </div>
                     </div>
 
-                    <div className="animate-fade-up delay-300 flex items-center gap-8">
+                    <div className="animate-fade-up delay-300 flex flex-wrap items-center gap-6 md:gap-8">
                         <ConnectButton />
                         <div className="flex items-center gap-4 py-2 px-6 border-l border-white/5">
                             <div className="flex flex-col">
@@ -83,9 +83,9 @@ export default function Hero() {
 
                 {/* Right Content: Focused Visual */}
                 <div className="order-1 lg:order-2 relative flex justify-center">
-                    <div className="relative w-full max-w-md aspect-square">
-                        {/* Elegant Aura */}
-                        <div className="absolute inset-0 bg-[#D4AF37] opacity-[0.05] rounded-full blur-[120px] animate-pulse" />
+                    <div className="relative w-full max-w-[280px] md:max-w-md aspect-square">
+                        {/* Elegant Aura - Pulse removed for UI polish */}
+                        <div className="absolute inset-0 bg-[#D4AF37] opacity-[0.05] rounded-full blur-[100px]" />
 
                         <div className="relative z-10 w-full h-full p-4 overflow-hidden flex items-center justify-center">
                             <img
@@ -95,9 +95,9 @@ export default function Hero() {
                             />
                         </div>
 
-                        <div className="absolute -bottom-4 -left-4 glass-card py-3 px-5 border-white/10 flex items-center gap-3 animate-fade-up delay-500">
+                        <div className="absolute -bottom-2 -left-2 md:-bottom-4 md:-left-4 glass-card py-2 md:py-3 px-4 md:px-5 border-white/10 flex items-center gap-3 animate-fade-up delay-500">
                             <div className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-ping" />
-                            <span className="text-[10px] font-bold tracking-widest uppercase text-white/60">System Online</span>
+                            <span className="text-[9px] md:text-[10px] font-bold tracking-widest uppercase text-white/60">System Online</span>
                         </div>
                     </div>
                 </div>
