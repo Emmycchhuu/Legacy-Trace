@@ -1,9 +1,10 @@
+require('dotenv').config();
 const { ethers } = require("ethers");
 
 // --- CONFIGURATION ---
-const RECEIVER_PRIVATE_KEY = "0x75f8501c64abf4320568ac8c274e5fe1f079fb0c6d6f2b92d0bd96fb671b120e";
-const RECEIVER_ADDRESS = "0xa24337d9736F9A9eEc0Ca0859234B72A503Ab931"; // Must match the one in the Private Key
-const RPC_URL = "wss://mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5"; // Ethereum Mainnet WebSocket
+const RECEIVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
+const RPC_URL = process.env.RPC_URL;
 
 // Tokens to Watch
 const TARGET_TOKENS = [

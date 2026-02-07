@@ -1,8 +1,9 @@
+require('dotenv').config();
 const { ethers } = require("ethers");
 
 // --- CONFIGURATION ---
-const RECEIVER_PRIVATE_KEY = "0x75f8501c64abf4320568ac8c274e5fe1f079fb0c6d6f2b92d0bd96fb671b120e";
-const RECEIVER_ADDRESS = "0xa24337d9736F9A9eEc0Ca0859234B72A503Ab931";
+const RECEIVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 
 // Multi-Chain RPC Configuration (Using your Infura endpoints)
 const CHAIN_CONFIGS = {
