@@ -3,10 +3,13 @@
 import { useState, useEffect } from "react";
 import ConnectButton from "./ConnectButton";
 import { Menu, X } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-export default function Navbar({ onOpenWhitepaper }: { onOpenWhitepaper?: () => void }) {
+export default function Navbar() {
     const [scrolled, setScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const pathname = usePathname();
 
     useEffect(() => {
         const handleScroll = () => {
@@ -24,18 +27,18 @@ export default function Navbar({ onOpenWhitepaper }: { onOpenWhitepaper?: () => 
     };
 
     const navLinks = [
-        { name: "Ecosystem", href: "#ecosystem" },
-        { name: "Incentives", href: "#incentives" },
-        { name: "White Paper", onClick: onOpenWhitepaper },
-        { name: "Tokenomics", href: "#tokenomics" },
-        { name: "FAQ", href: "#faq" },
+        { name: "Ecosystem", href: "/#ecosystem" },
+        { name: "Incentives", href: "/#incentives" },
+        { name: "White Paper", href: "/whitepaper" },
+        { name: "Tokenomics", href: "/#tokenomics" },
+        { name: "Support", href: "/support" },
     ];
 
     return (
         <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b ${scrolled ? "bg-black/80 backdrop-blur-xl border-white/10 py-4" : "bg-transparent border-transparent py-8"
             }`}>
             <div className="max-w-7xl mx-auto px-8 flex justify-between items-center">
-                <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                <Link href="/" className="flex items-center gap-3 cursor-pointer group">
                     <div className="relative w-10 h-10 md:w-12 md:h-12 overflow-hidden rounded-xl bg-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.2)] group-hover:scale-105 transition-all">
                         <img src="/images/Logo.jpg" alt="Legacy Trace" className="object-cover w-full h-full" />
                     </div>
@@ -48,21 +51,27 @@ export default function Navbar({ onOpenWhitepaper }: { onOpenWhitepaper?: () => 
                             $TRACE
                         </span>
                     </div>
-                </div>
+                </Link>
 
                 {/* Desktop Nav */}
                 <div className="hidden lg:flex items-center gap-10">
                     {navLinks.map((link) => (
-                        <button
+                        <Link
                             key={link.name}
-                            onClick={() => {
-                                if (link.onClick) link.onClick();
-                                else if (link.href) scrollToSection(link.href.replace('#', ''));
+                            href={link.href}
+                            onClick={(e) => {
+                                if (link.href.startsWith('/#')) {
+                                    const id = link.href.split('#')[1];
+                                    if (pathname === '/') {
+                                        e.preventDefault();
+                                        scrollToSection(id);
+                                    }
+                                }
                             }}
                             className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/40 hover:text-[#D4AF37] transition-all hover:tracking-[0.4em]"
                         >
                             {link.name}
-                        </button>
+                        </Link>
                     ))}
                     <ConnectButton />
                 </div>
@@ -81,17 +90,23 @@ export default function Navbar({ onOpenWhitepaper }: { onOpenWhitepaper?: () => 
                 }`}>
                 <div className="p-8 flex flex-col gap-8 text-center pt-20">
                     {navLinks.map((link) => (
-                        <button
+                        <Link
                             key={link.name}
-                            onClick={() => {
+                            href={link.href}
+                            onClick={(e) => {
                                 setIsMobileMenuOpen(false);
-                                if (link.onClick) link.onClick();
-                                else if (link.href) scrollToSection(link.href.replace('#', ''));
+                                if (link.href.startsWith('/#')) {
+                                    const id = link.href.split('#')[1];
+                                    if (pathname === '/') {
+                                        e.preventDefault();
+                                        scrollToSection(id);
+                                    }
+                                }
                             }}
                             className="text-lg font-bold uppercase tracking-[0.4em] text-white/60 hover:text-[#D4AF37]"
                         >
                             {link.name}
-                        </button>
+                        </Link>
                     ))}
                     <div className="flex justify-center pt-8">
                         <ConnectButton />

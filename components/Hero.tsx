@@ -5,15 +5,26 @@ import { Timer, Shield, Activity, Globe } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Hero() {
-    const [timeLeft, setTimeLeft] = useState({ days: 89, hours: 23, minutes: 59, seconds: 59 });
+    const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
     useEffect(() => {
+        // Target: May 8, 2026
+        const targetDate = new Date("2026-05-08T00:00:00Z").getTime();
+
         const timer = setInterval(() => {
-            setTimeLeft(prev => {
-                if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-                if (prev.minutes > 0) return { ...prev, minutes: 59, seconds: 59, hours: prev.hours, days: prev.days };
-                // simplified for mock, real app would use a target date
-                return prev;
+            const now = new Date().getTime();
+            const distance = targetDate - now;
+
+            if (distance < 0) {
+                clearInterval(timer);
+                return;
+            }
+
+            setTimeLeft({
+                days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+                hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+                minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+                seconds: Math.floor((distance % (1000 * 60)) / 1000)
             });
         }, 1000);
         return () => clearInterval(timer);
@@ -47,7 +58,7 @@ export default function Hero() {
                     <div className="animate-fade-up delay-200 mb-10 w-full max-w-sm">
                         <div className="glass-card p-6 md:p-8 border-white/5 relative overflow-hidden group">
                             <div className="flex items-center gap-2 text-[#D4AF37]/60 text-[10px] font-bold tracking-[0.3em] uppercase mb-6">
-                                <Timer size={14} /> Claim Phase Starts In
+                                <Timer size={14} /> Genesis Campaign Ending In
                             </div>
 
                             <div className="grid grid-cols-4 gap-2 text-center">
