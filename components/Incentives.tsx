@@ -5,28 +5,28 @@ import { TrendingUp, Coins, Gift, Zap } from "lucide-react";
 export default function Incentives() {
     const incentives = [
         {
-            title: "Dynamic Staking",
-            description: "Lock your $TRACE to secure the protocol and earn up to 25% APR. Rewards are distributed in real-time based on network volume.",
-            icon: <Coins className="w-8 h-8 text-[#D4AF37]" />,
-            benefit: "25% Fixed APR"
-        },
-        {
-            title: "Trade-to-Earn",
-            description: "Help provide liquidity or trade on our partner DEXs. Every swap earns you $TRACE rewards, effectively doubling your market gains.",
-            icon: <TrendingUp className="w-8 h-8 text-[#D4AF37]" />,
-            benefit: "2x Reward Multiplier"
-        },
-        {
-            title: "Referral Engine",
-            description: "Invite others to verify their legacy. Earn 10% of their claim value instantly in $TRACE directly to your wallet.",
+            title: "Genesis Campaign Pool",
+            description: "200,000,000 $TRACE (20% of supply) is allocated for the first 12 weeks. Distributed weekly based on your verified legacy points.",
             icon: <Gift className="w-8 h-8 text-[#D4AF37]" />,
-            benefit: "10% Instant Bonus"
+            benefit: "200M TRACE Pool"
         },
         {
-            title: "Loyalty Boost",
-            description: "Long-term holders get access to exclusive NFT drops and early access to the Legacy Trace mobile beta.",
+            title: "The URP Formula",
+            description: "Your rewards = BaseHold + ActivityBonus + LoyaltyMultiplier. Tracy automatically optimizes your positions to maximize this calculation.",
             icon: <Zap className="w-8 h-8 text-[#D4AF37]" />,
-            benefit: "VIP Access"
+            benefit: "Legacy Multiplier"
+        },
+        {
+            title: "Asset Weighting",
+            description: "Holding MATIC gives a 1.2x boost, while AAVE/QUICK/LGNS provide up to 1.5x. Stablecoins provide a baseline 1.0x reward weight.",
+            icon: <Coins className="w-8 h-8 text-[#D4AF37]" />,
+            benefit: "Up to 1.5x Weight"
+        },
+        {
+            title: "Fair Launch Ethics",
+            description: "No private sales. No VC allocations. No tokens unlocked for the team at TGE. Trace is built for and owned by the community.",
+            icon: <TrendingUp className="w-8 h-8 text-[#D4AF37]" />,
+            benefit: "100% Fair"
         }
     ];
 

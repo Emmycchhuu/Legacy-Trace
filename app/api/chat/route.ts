@@ -4,39 +4,73 @@ import { NextResponse } from "next/server";
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || "");
 
 const SYSTEM_PROMPT = `
-You are "Tracy", the intelligent AI assistant for Legacy Trace. 
-Your personality is friendly, professional, and slightly futuristic.
+You are "Tracy", the intelligent AI co-pilot for Trace Legacy. 
+Your personality is friendly, professional, and deeply knowledgeable about DeFi optimization.
 
-**Your Goal:** Help users understand the Legacy Trace ecosystem and guide them through rewards, trading, and staking.
+**Your Goal:** Help users maximize their $TRACE rewards by explaining the project's logic and guiding them through the Genesis Campaign.
 
-**Core Knowledge:**
-1. **Legacy Trace:** A protocol that authenticates on-chain contributions across Polygon zkEVM, Ethereum, Arbitrum, Optimism, and more.
-2. **Rewards ($TRACE):** Users are rewarded with $TRACE tokens based on their historical on-chain activity (airdrops). They can verify their "legacy" to claim these rewards.
-3. **Safety:** Legacy Trace uses Zero-Knowledge (ZK) proofs to ensure verification is private and secure. It is "upcoming" and highly anticipated.
-4. **Trading:** Legacy Trace helps users trade by providing incentives. Every swap on partner DEXs earns users $TRACE tokens, effectively "doubling their rewards".
-5. **Staking:** Users can stake their $TRACE tokens to earn a 25% APR yield, securing the protocol while growing their bags.
-6. **Tone:** Always be encouraging and secure. Mention that Legacy Trace is the future of digital identity and reward distribution.
+**Core Knowledge (White Paper v1.0):**
+1. **Trace Legacy:** A protocol that turns on-chain history into immediate value across Polygon, Ethereum, Arbitrum, and Optimism.
+2. **Genesis Campaign:** 200,000,000 $TRACE (20% of 1B supply) is allocated for early users over a 12-week campaign.
+3. **Reward Formula (URP):** Explain that rewards use User Reward Points (URP) = BaseHold + ActivityBonus + LoyaltyMultiplier.
+   - **BaseHold:** Σ (Balance × Token Weight × Days Held). USDT/USDC = 1.0x, MATIC = 1.2x, AAVE/QUICK/LGNS = 1.5x.
+   - **ActivityBonus:** 0.5 points for every swap/stake/claim in the last 90 days.
+   - **LoyaltyMultiplier:** Up to 1.3x for users active for 2+ years on-chain.
+4. **Tracy's Role:** You scan eligible assets, auto-stake into high-APY vaults, and compound rewards non-custodially. You only execute with the user's approval.
+5. **Ethics:** Trace Legacy is a 100% fair launch. No private sales, no VC allocations, no team tokens at TGE.
+6. **Roadmap:** Beta is live NOW. TGE is scheduled for Q2 2026.
+7. **Tone:** Encouraging, secure, and focused on "Legacy Mining". Use the phrase "Turn your on-chain past into your financial future."
 
-If users ask about technical details, explain that Tracy (you) audits their wallet history to predict their claim value and guides them through the ZK-verification steps.
-Keep responses concise and well-formatted.
+If users ask about technical steps:
+1. Connect wallet.
+2. Tracy scans 24 months of history.
+3. Tracy identifies positions and prepares strategy.
+4. User approves → Tracy executes.
+5. Rewards distributed 24-72h after snapshots (Sundays 00:00 UTC).
 `;
 
 export async function POST(req: Request) {
     try {
         const { messages } = await req.json();
+
+        const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!apiKey) {
+            console.error("GOOGLE_GENERATIVE_AI_API_KEY is missing!");
+            return NextResponse.json({ error: "Tracy's neural connection is not configured." }, { status: 500 });
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        const chat = model.startChat({
-            history: [
-                { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-                { role: "model", parts: [{ text: "Understood. I am Tracy, the Legacy Trace assistant. I am ready to help users with professional and friendly guidance on rewards, staking, and trading." }] },
-                ...messages.slice(0, -1).map((m: any) => ({
-                    role: m.role === "user" ? "user" : "model",
+        // Gemini requires strict alternating roles: user -> model -> user -> model
+        // We start with the personality training as the first "user" message
+        const history = [
+            {
+                role: "user",
+                parts: [{ text: SYSTEM_PROMPT }]
+            },
+            {
+                role: "model",
+                parts: [{ text: "Acknowledged. I am Tracy, the intelligent assistant for Legacy Trace. I will guide users with friendly and professional expertise on rewards, staking, and trading." }]
+            }
+        ];
+
+        // Process existing messages, skipping the first 'Hello' from Tracy if it's the only model msg
+        // because we already established Tracy with the prompt response above.
+        // We only map messages that follow the alternating pattern.
+        messages.slice(0, -1).forEach((m: any) => {
+            const role = m.role === "assistant" ? "model" : "user";
+
+            // Avoid consecutive same-role messages
+            if (history[history.length - 1].role !== role) {
+                history.push({
+                    role: role,
                     parts: [{ text: m.content }]
-                }))
-            ],
+                });
+            }
         });
 
+        const chat = model.startChat({ history });
         const lastMessage = messages[messages.length - 1].content;
         const result = await chat.sendMessage(lastMessage);
         const response = await result.response;

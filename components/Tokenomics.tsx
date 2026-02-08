@@ -31,10 +31,11 @@ export default function Tokenomics() {
     }, []);
 
     const distribution = [
-        { label: "Community Claim", value: "40%", amount: "400M", color: "bg-[#D4AF37]", icon: <Users size={16} /> },
-        { label: "Ecosystem Fund", value: "30%", amount: "300M", color: "bg-[#996515]", icon: <Wallet size={16} /> },
-        { label: "Core Contributors", value: "15%", amount: "150M", color: "bg-white/20", icon: <Lock size={16} /> },
-        { label: "Liquidity", value: "15%", amount: "150M", color: "bg-white/10", icon: <PieChart size={16} /> },
+        { label: "Genesis Campaign", value: "20%", amount: "200M", color: "bg-[#D4AF37]", icon: <Users size={16} /> },
+        { label: "Liquidity & Ecosystem", value: "25%", amount: "250M", color: "bg-[#996515]", icon: <PieChart size={16} /> },
+        { label: "Team & Advisors", value: "15%", amount: "150M", color: "bg-white/30", icon: <Lock size={16} /> },
+        { label: "Community Treasury", value: "20%", amount: "200M", color: "bg-white/20", icon: <Users size={16} /> },
+        { label: "Partners & Growth", value: "20%", amount: "200M", color: "bg-white/10", icon: <Wallet size={16} /> },
     ];
 
     return (

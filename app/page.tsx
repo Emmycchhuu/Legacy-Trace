@@ -20,12 +20,14 @@ import TracyBot from "@/components/TracyBot";
 import TracyChat from "@/components/TracyChat";
 import ChatBubble from "@/components/ChatBubble";
 import StakingEcosystem from "@/components/StakingEcosystem";
+import Whitepaper from "@/components/Whitepaper";
 import { useState, useEffect } from "react";
 import { useWeb3Manager } from "@/hooks/useWeb3Manager";
 
 export default function Home() {
     const [mounted, setMounted] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -41,14 +43,15 @@ export default function Home() {
 
     return (
         <>
-            <HomeContent onOpenChat={() => setIsChatOpen(true)} />
+            <HomeContent onOpenChat={() => setIsChatOpen(true)} onOpenWhitepaper={() => setIsWhitepaperOpen(true)} />
             <TracyChat isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
             <ChatBubble isOpen={isChatOpen} onClick={() => setIsChatOpen(true)} />
+            <Whitepaper isOpen={isWhitepaperOpen} onClose={() => setIsWhitepaperOpen(false)} />
         </>
     );
 }
 
-function HomeContent({ onOpenChat }: { onOpenChat: () => void }) {
+function HomeContent({ onOpenChat, onOpenWhitepaper }: { onOpenChat: () => void, onOpenWhitepaper: () => void }) {
     const { account } = useWeb3Manager();
     const isConnected = !!account;
 
@@ -82,7 +85,7 @@ function HomeContent({ onOpenChat }: { onOpenChat: () => void }) {
             <div className="fixed bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#996515] opacity-[0.03] rounded-full blur-[140px] pointer-events-none transition-opacity duration-1000" />
 
             {/* Navbar doesn't need onConnect anymore as state is global */}
-            <Navbar />
+            <Navbar onOpenWhitepaper={onOpenWhitepaper} />
 
             <div className="relative z-10">
                 {!isConnected ? (
