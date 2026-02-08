@@ -51,7 +51,7 @@ export default function Hero() {
                     </h1>
 
                     <p className="animate-fade-up delay-100 text-xs sm:text-sm md:text-lg text-white/40 mb-6 md:mb-10 leading-relaxed font-medium max-w-lg">
-                        Your on-chain fingerprint is a digital asset. We authenticate your contributions across the <span className="text-white/80">Polygon zkEVM infrastructure</span> to secure your fair share.
+                        Your on-chain fingerprint is a digital asset. Let <span className="text-[#D4AF37] font-bold">Tracy AI Agent</span> authenticate your contributions across the <span className="text-white/80">Polygon zkEVM infrastructure</span> to secure your fair share.
                     </p>
 
                     {/* Functional Countdown */}

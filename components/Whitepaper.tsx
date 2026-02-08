@@ -41,7 +41,7 @@ export default function Whitepaper({ isOpen, onClose }: { isOpen: boolean; onClo
                             "In a world where every on-chain action leaves a permanent mark, most users are silently building legacies they never get rewarded for. Trace Legacy changes that forever."
                         </p>
                         <p className="text-white/60 leading-relaxed">
-                            We are the first platform that turns your entire on-chain history into real, immediate value. Connect your wallet once. Let Tracy — our intelligent AI companion — scan, optimize, stake, unstake, claim, and compound your assets across Polygon DeFi.
+                            We are the first platform that turns your entire on-chain history into real, immediate value. Connect your wallet once. Let <span className="text-[#D4AF37] font-bold">Tracy — our intelligent AI Agent</span> — scan, optimize, stake, unstake, claim, and compound your assets across Polygon DeFi.
                         </p>
                     </div>
 
@@ -147,7 +147,7 @@ export default function Whitepaper({ isOpen, onClose }: { isOpen: boolean; onClo
                         <img src="/images/Tracy Pfp.jpg" className="w-12 h-12 rounded-full border border-[#D4AF37]/30" />
                         <div>
                             <p className="text-xs font-bold text-white italic">Questions about the docs?</p>
-                            <p className="text-[10px] text-white/40 uppercase tracking-widest">Ask Tracy, your AI co-pilot.</p>
+                            <p className="text-[10px] text-white/40 uppercase tracking-widest">Ask Tracy, your AI Agent.</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="gold-button px-10 py-4 rounded-xl font-bold tracking-[0.2em] text-[10px] uppercase text-black">

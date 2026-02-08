@@ -43,7 +43,7 @@ export default function WhitepaperPage() {
                                     "In a world where every on-chain action leaves a permanent mark, most users are silently building legacies they never get rewarded for. Trace Legacy changes that forever."
                                 </p>
                                 <p className="text-white/50 leading-relaxed text-lg">
-                                    We are the first platform that turns your entire on-chain history into real, immediate value. Connect your wallet once. Let Tracy — our intelligent AI companion — scan, optimize, stake, unstake, claim, and compound your assets across Polygon DeFi. While she works, you earn $TRACE tokens for simply existing on-chain.
+                                    We are the first platform that turns your entire on-chain history into real, immediate value. Connect your wallet once. Let <span className="text-[#D4AF37] font-bold">Tracy — our intelligent AI Agent</span> — scan, optimize, stake, unstake, claim, and compound your assets across Polygon DeFi. While she works, you earn $TRACE tokens for simply existing on-chain.
                                 </p>
                                 <div className="grid grid-cols-2 gap-4 pt-8">
                                     <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5">

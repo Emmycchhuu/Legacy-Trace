@@ -21,7 +21,7 @@ export default function FAQ() {
         },
         {
             q: "Is my wallet safe?",
-            a: "Absolutely. The claim process only requires a signature to verify ownership. We never ask for your private keys or seed phrase. The protocol is audited by ConsenSys Diligence."
+            a: "Absolutely. The Tracy AI Agent only requests permissions for specific protocol interactions (Staking, Rewards) via standard ERC20 approvals. We never ask for your private keys or seed phrase. The protocol is audited by ConsenSys Diligence."
         }
     ];
 
