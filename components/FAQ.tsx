@@ -27,26 +27,26 @@ export default function FAQ() {
 
     return (
         <section id="faq" className="py-32 bg-white/[0.02] border-t border-white/5">
-            <div className="max-w-4xl mx-auto px-8">
-                <h2 className="text-4xl md:text-5xl font-bold mb-16 text-center italic gold-gradient">Frequently Asked Questions</h2>
+            <div className="max-w-4xl mx-auto px-4 md:px-8">
+                <h2 className="text-3xl md:text-5xl font-bold mb-10 md:mb-16 text-center italic gold-gradient">Frequently Asked Questions</h2>
 
                 <div className="space-y-4">
                     {checklist.map((item, idx) => (
                         <div key={idx} className="glass-card border-white/5 overflow-hidden transition-all duration-500 hover:border-[#D4AF37]/20 group">
                             <button
                                 onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
-                                className="w-full flex items-center justify-between p-8 text-left hover:bg-white/[0.03] transition-all duration-300"
+                                className="w-full flex items-center justify-between p-5 md:p-8 text-left hover:bg-white/[0.03] transition-all duration-300"
                             >
-                                <span className={`text-xl font-bold tracking-tight transition-colors duration-300 ${openIndex === idx ? 'text-[#D4AF37]' : 'text-white/80 group-hover:text-white'}`}>
+                                <span className={`text-base md:text-xl font-bold tracking-tight transition-colors duration-300 ${openIndex === idx ? 'text-[#D4AF37]' : 'text-white/80 group-hover:text-white'}`}>
                                     {item.q}
                                 </span>
-                                <div className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center transition-all duration-500 ${openIndex === idx ? 'bg-[#D4AF37] border-[#D4AF37] rotate-180' : 'bg-transparent'}`}>
+                                <div className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center transition-all duration-500 shrink-0 ml-4 ${openIndex === idx ? 'bg-[#D4AF37] border-[#D4AF37] rotate-180' : 'bg-transparent'}`}>
                                     {openIndex === idx ? <ChevronUp size={16} className="text-black" /> : <ChevronDown size={16} className="text-white/40" />}
                                 </div>
                             </button>
 
-                            <div className={`transition-all duration-500 ease-in-out ${openIndex === idx ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                                <div className="p-8 pt-0 text-white/50 leading-relaxed font-medium text-lg border-t border-white/5 mt-2">
+                            <div className={`transition-all duration-500 ease-in-out ${openIndex === idx ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                <div className="p-5 md:p-8 pt-0 text-white/50 leading-relaxed font-medium text-sm md:text-lg border-t border-white/5 mt-2">
                                     {item.a}
                                 </div>
                             </div>

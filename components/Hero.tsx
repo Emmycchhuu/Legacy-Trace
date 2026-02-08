@@ -45,12 +45,12 @@ export default function Hero() {
                         Legacy Verification Protocol
                     </div>
 
-                    <h1 className="reveal-text text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-4 md:mb-8 leading-[1.1] text-white">
-                        THE FUTURE OF <br />
+                    <h1 className="reveal-text text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-4 md:mb-8 leading-[1.1] text-white">
+                        THE FUTURE OF <br className="hidden sm:block" />
                         <span className="gold-gradient italic text-shimmer tracking-wider uppercase">Legacy Trace</span>
                     </h1>
 
-                    <p className="animate-fade-up delay-100 text-xs sm:text-sm md:text-lg text-white/40 mb-6 md:mb-10 leading-relaxed font-medium max-w-lg">
+                    <p className="animate-fade-up delay-100 text-[11px] sm:text-sm md:text-lg text-white/40 mb-6 md:mb-10 leading-relaxed font-medium max-w-lg break-words px-1 md:px-0">
                         Your on-chain fingerprint is a digital asset. Let <span className="text-[#D4AF37] font-bold">Tracy AI Agent</span> authenticate your contributions across the <span className="text-white/80">Polygon zkEVM infrastructure</span> to secure your fair share.
                     </p>
 

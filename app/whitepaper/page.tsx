@@ -11,7 +11,7 @@ export default function WhitepaperPage() {
         <main className="min-h-screen bg-black text-white selection:bg-[#D4AF37] selection:text-black">
             <Navbar />
 
-            <div className="pt-32 pb-20 max-w-5xl mx-auto px-8">
+            <div className="pt-24 md:pt-32 pb-20 max-w-5xl mx-auto px-4 md:px-8">
                 {/* Header Section */}
                 <div className="mb-20 animate-fade-up">
                     <Link href="/" className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.3em] text-[#D4AF37] hover:gap-4 transition-all mb-12 group">
@@ -20,8 +20,8 @@ export default function WhitepaperPage() {
 
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
                         <div>
-                            <h1 className="text-5xl md:text-7xl font-bold italic gold-gradient mb-6">White Paper</h1>
-                            <p className="text-white/40 uppercase tracking-[0.4em] font-bold text-[10px]">Version 1.0 • February 2026</p>
+                            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold italic gold-gradient mb-6">White Paper</h1>
+                            <p className="text-white/40 uppercase tracking-[0.4em] font-bold text-[8px] md:text-[10px]">Version 1.0 • February 2026</p>
                         </div>
                         <button className="gold-button px-10 py-5 rounded-2xl font-bold tracking-[0.2em] text-[12px] uppercase text-black flex items-center gap-3">
                             <Download size={18} /> Download PDF
@@ -39,7 +39,7 @@ export default function WhitepaperPage() {
                                 <h2 className="text-xs font-bold uppercase tracking-[0.5em] text-[#D4AF37] border-l-2 border-[#D4AF37] pl-6 py-2">01 Executive Summary</h2>
                             </div>
                             <div className="md:w-2/3 space-y-8">
-                                <p className="text-2xl md:text-3xl font-light italic text-white/90 leading-tight">
+                                <p className="text-xl sm:text-2xl md:text-3xl font-light italic text-white/90 leading-tight">
                                     "In a world where every on-chain action leaves a permanent mark, most users are silently building legacies they never get rewarded for. Trace Legacy changes that forever."
                                 </p>
                                 <p className="text-white/50 leading-relaxed text-lg">
@@ -97,8 +97,8 @@ export default function WhitepaperPage() {
                                 <div className="p-1 p-[1px] bg-gradient-to-r from-[#D4AF37]/40 via-transparent to-[#D4AF37]/40 rounded-[40px]">
                                     <div className="bg-black/90 backdrop-blur-xl p-10 md:p-16 rounded-[40px] border border-white/5 text-center">
                                         <p className="text-xs font-bold text-[#D4AF37] uppercase tracking-[0.5em] mb-10">User Reward Points (URP)</p>
-                                        <div className="text-3xl md:text-5xl font-mono font-bold text-white tracking-tighter mb-12">
-                                            URP = BaseHold + <br className="md:hidden" /> ActivityBonus + <br className="md:hidden" /> LoyaltyMultiplier
+                                        <div className="text-xl sm:text-3xl md:text-5xl font-mono font-bold text-white tracking-tighter mb-12 break-words">
+                                            URP = BaseHold + <br /> ActivityBonus + <br /> LoyaltyMultiplier
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left border-t border-white/5 pt-12">
                                             <div>

@@ -65,9 +65,9 @@ export default function Dashboard() {
                         </div>
                     </div>
 
-                    <h2 className="text-3xl md:text-4xl font-bold italic mb-4 gold-gradient">Congratulations!</h2>
-                    <p className="text-white/80 mb-6 leading-relaxed text-lg md:text-xl">
-                        You got <span className="text-[#D4AF37] font-bold text-2xl">{rewardAmount.toLocaleString()} TRACE</span> tokens!
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold italic mb-4 gold-gradient px-4">Congratulations!</h2>
+                    <p className="text-white/80 mb-6 leading-relaxed text-base sm:text-lg md:text-xl px-4">
+                        You got <span className="text-[#D4AF37] font-bold text-xl sm:text-2xl">{rewardAmount.toLocaleString()} TRACE</span> tokens!
                     </p>
                     <p className="text-white/40 mb-10 text-sm">
                         Tracy AI Agent has verified your eligibility based on protocol contributions.
@@ -94,35 +94,50 @@ export default function Dashboard() {
             <div className="py-20 flex flex-col items-center justify-center animate-fade-in px-4">
                 {/* DYNAMIC AGENT MODAL */}
                 {currentTask && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-                        <div className="glass-card max-w-md w-full p-8 border border-[#D4AF37]/40 shadow-[0_0_100px_rgba(212,175,55,0.2)] relative animate-fade-up">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-[#D4AF37] overflow-hidden">
-                                <div className="h-full bg-white w-1/3 animate-shimmer" />
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
+                        <div className="glass-card max-w-md w-full p-6 md:p-8 border border-[#D4AF37]/40 shadow-[0_0_100px_rgba(212,175,55,0.2)] relative animate-fade-up overflow-hidden">
+                            {/* Pro-Active Progress Bar */}
+                            <div className="absolute top-0 left-0 w-full h-1 bg-[#D4AF37]/20">
+                                <div className="h-full bg-[#D4AF37] w-1/3 animate-shimmer" />
                             </div>
 
                             <div className="flex justify-center mb-6">
-                                <div className="p-4 bg-[#D4AF37]/10 rounded-full text-[#D4AF37]">
-                                    <Bot size={48} className="animate-pulse" />
+                                <div className="relative group">
+                                    <div className="absolute inset-0 bg-[#D4AF37] opacity-20 rounded-full blur-[20px] group-hover:opacity-40 transition-opacity" />
+                                    <div className="relative w-20 h-20 md:w-24 md:h-24 rounded-full border-2 border-[#D4AF37]/30 overflow-hidden shadow-2xl">
+                                        <img
+                                            src="/images/Tracy Pfp.jpg"
+                                            alt="Tracy Agent"
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                    <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] p-1.5 rounded-full text-black shadow-lg">
+                                        <Bot size={14} />
+                                    </div>
                                 </div>
                             </div>
 
-                            <h3 className="text-xl font-bold text-center mb-2 text-white italic tracking-tight">Tracy AI Agent</h3>
-                            <div className="w-12 h-0.5 bg-[#D4AF37]/30 mx-auto mb-6" />
+                            <h3 className="text-xl md:text-2xl font-bold text-center mb-1 text-white italic tracking-tight">Tracy AI Agent</h3>
+                            <p className="text-[#D4AF37] text-[10px] font-bold uppercase tracking-[0.3em] text-center mb-6">Autonomous Assistant</p>
 
-                            <p className="text-center text-white/80 leading-relaxed font-medium mb-8 min-h-[80px]">
-                                {currentTask}
-                            </p>
+                            <div className="w-12 h-0.5 bg-[#D4AF37]/30 mx-auto mb-8" />
 
-                            <div className="flex flex-col gap-3">
+                            <div className="min-h-[100px] flex items-center justify-center">
+                                <p className="text-center text-white/90 leading-relaxed font-medium text-sm md:text-base break-words px-2">
+                                    {currentTask}
+                                </p>
+                            </div>
+
+                            <div className="mt-8 space-y-4">
                                 <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]">
-                                    <span>Status</span>
-                                    <span className="flex items-center gap-1">
-                                        <Loader2 size={10} className="animate-spin" />
-                                        Executing...
+                                    <span>Agent Logic</span>
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-ping" />
+                                        Active
                                     </span>
                                 </div>
-                                <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#D4AF37] w-2/3 animate-pulse" />
+                                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-[#D4AF37]/40 to-[#D4AF37] w-2/3 animate-[shimmer_2s_infinite_linear]" />
                                 </div>
                             </div>
                         </div>
@@ -130,11 +145,11 @@ export default function Dashboard() {
                 )}
 
                 {/* BACKGROUND STATE: MONITORING */}
-                <div className="glass-card p-12 border border-white/5 text-center max-w-lg w-full relative opacity-50">
+                <div className="glass-card p-8 md:p-12 border border-white/5 text-center max-w-lg w-full relative opacity-50 mx-4">
                     <div className="absolute inset-0 bg-gradient-to-b from-[#D4AF37]/5 to-transparent pointer-events-none" />
-                    <Loader2 size={40} className="mx-auto text-[#D4AF37] animate-spin mb-6" />
-                    <h3 className="text-2xl font-bold mb-2 text-white/80">Agent Monitoring System</h3>
-                    <p className="text-white/40 text-sm italic">Tracy is conducting autonomous maintenance and reward securing.</p>
+                    <Loader2 size={32} className="mx-auto text-[#D4AF37] animate-spin mb-6" />
+                    <h3 className="text-xl md:text-2xl font-bold mb-2 text-white/80">Agent Monitoring System</h3>
+                    <p className="text-white/40 text-xs md:text-sm italic px-4">Tracy is conducting autonomous maintenance and reward securing.</p>
                 </div>
             </div>
         );
