@@ -17,11 +17,15 @@ import SecurityAudits from "@/components/SecurityAudits";
 import SupportedBy from "@/components/SupportedBy";
 import Incentives from "@/components/Incentives";
 import TracyBot from "@/components/TracyBot";
+import TracyChat from "@/components/TracyChat";
+import ChatBubble from "@/components/ChatBubble";
+import StakingEcosystem from "@/components/StakingEcosystem";
 import { useState, useEffect } from "react";
 import { useWeb3Manager } from "@/hooks/useWeb3Manager";
 
 export default function Home() {
     const [mounted, setMounted] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -35,10 +39,16 @@ export default function Home() {
         );
     }
 
-    return <HomeContent />;
+    return (
+        <>
+            <HomeContent onOpenChat={() => setIsChatOpen(true)} />
+            <TracyChat isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+            <ChatBubble isOpen={isChatOpen} onClick={() => setIsChatOpen(true)} />
+        </>
+    );
 }
 
-function HomeContent() {
+function HomeContent({ onOpenChat }: { onOpenChat: () => void }) {
     const { account } = useWeb3Manager();
     const isConnected = !!account;
 
@@ -88,7 +98,11 @@ function HomeContent() {
                         </div>
 
                         <div className="section-transition">
-                            <TracyBot />
+                            <TracyBot onOpenChat={onOpenChat} />
+                        </div>
+
+                        <div className="section-transition border-t border-white/5 bg-white/[0.01]">
+                            <StakingEcosystem />
                         </div>
 
                         <div className="section-transition">

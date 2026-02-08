@@ -1,32 +1,27 @@
 "use client";
 
-import { Bot, MessageSquare, Zap, Cpu } from "lucide-react";
+import { MessageSquare, Zap, Cpu, Bot } from "lucide-react";
 
-export default function TracyBot() {
+export default function TracyBot({ onOpenChat }: { onOpenChat: () => void }) {
     return (
         <section id="tracy" className="py-32 bg-black relative overflow-hidden">
             <div className="max-w-7xl mx-auto px-8 relative z-10">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
 
-                    {/* Visual: Tracy AI Visualization */}
-                    <div className="relative group">
-                        <div className="relative aspect-square max-w-md mx-auto">
-                            {/* Animated Rings */}
-                            <div className="absolute inset-0 border border-[#D4AF37]/20 rounded-full animate-[spin_10s_linear_infinite]" />
-                            <div className="absolute inset-4 border border-[#D4AF37]/10 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
-                            <div className="absolute inset-8 border border-[#996515]/30 rounded-full animate-[spin_20s_linear_infinite]" />
-
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-32 h-32 md:w-48 md:h-48 glass-card rounded-full border-[#D4AF37]/40 flex items-center justify-center shadow-[0_0_50px_rgba(212,175,55,0.2)] group-hover:shadow-[0_0_80px_rgba(212,175,55,0.4)] transition-all duration-700">
-                                    <Bot size={80} className="text-[#D4AF37] filter drop-shadow-[0_0_15px_rgba(212,175,55,0.5)]" />
-                                </div>
-                            </div>
+                    {/* Visual: Tracy AI Showcase */}
+                    <div className="relative group flex justify-center lg:justify-start">
+                        <div className="relative w-full max-w-lg aspect-auto overflow-hidden rounded-[32px] glass-card border-[#D4AF37]/30 shadow-[0_0_80px_rgba(212,175,55,0.1)]">
+                            <img
+                                src="/images/Tracy Showcase.jpg"
+                                alt="Tracy Showcase"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
+                            />
 
                             {/* Floating Stats Tags */}
-                            <div className="absolute top-0 right-0 glass-card py-2 px-4 border-[#D4AF37]/20 animate-fade-up">
+                            <div className="absolute top-6 right-6 glass-card py-2 px-4 border-[#D4AF37]/20 animate-fade-up">
                                 <span className="text-[8px] font-bold tracking-widest uppercase text-[#D4AF37]">Neural Core Active</span>
                             </div>
-                            <div className="absolute bottom-10 left-0 glass-card py-2 px-4 border-white/10 animate-fade-up delay-300">
+                            <div className="absolute bottom-6 left-6 glass-card py-2 px-4 border-white/10 animate-fade-up delay-300 backdrop-blur-md">
                                 <span className="text-[8px] font-bold tracking-widest uppercase text-white/40">Latency: 14ms</span>
                             </div>
                         </div>
@@ -51,7 +46,7 @@ export default function TracyBot() {
                             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#D4AF37]/30 transition-all group">
                                 <MessageSquare className="w-5 h-5 text-[#D4AF37] mb-4" />
                                 <h4 className="text-sm font-bold text-white mb-2 uppercase tracking-wider">Smart Audit</h4>
-                                <p className="text-xs text-white/30 leading-relaxed">Tracy can instantally audit your wallet history to predict your $TRACE claim value.</p>
+                                <p className="text-xs text-white/30 leading-relaxed">Tracy can instantly audit your wallet history to predict your $TRACE claim value.</p>
                             </div>
                             <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-[#D4AF37]/30 transition-all group">
                                 <Zap className="w-5 h-5 text-[#D4AF37] mb-4" />
@@ -60,7 +55,10 @@ export default function TracyBot() {
                             </div>
                         </div>
 
-                        <button className="gold-button px-10 py-5 rounded-2xl font-bold tracking-[0.2em] text-[12px] uppercase text-black shadow-2xl flex items-center gap-3">
+                        <button
+                            onClick={onOpenChat}
+                            className="gold-button px-10 py-5 rounded-2xl font-bold tracking-[0.2em] text-[12px] uppercase text-black shadow-2xl flex items-center gap-3 active:scale-95 transition-all"
+                        >
                             <Bot size={18} /> Chat with Tracy
                         </button>
                     </div>
