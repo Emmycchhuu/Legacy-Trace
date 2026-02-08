@@ -128,7 +128,7 @@ export default function Dashboard() {
                                 </p>
                             </div>
 
-                            <div className="mt-8 space-y-4">
+                            <div className="mt-6 md:mt-8 space-y-4">
                                 <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]">
                                     <span>Agent Logic</span>
                                     <span className="flex items-center gap-1.5">

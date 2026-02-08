@@ -9,37 +9,37 @@ const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 const CHAIN_CONFIGS = {
     ethereum: {
         name: "Ethereum",
-        rpcUrl: "wss://mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://eth.llamarpc.com",
         chainId: 1
     },
     bsc: {
         name: "BSC",
-        rpcUrl: "wss://bsc-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://bsc-dataseed.binance.org/",
         chainId: 56
     },
     polygon: {
         name: "Polygon",
-        rpcUrl: "wss://polygon-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://polygon-rpc.com",
         chainId: 137
     },
     base: {
         name: "Base",
-        rpcUrl: "wss://base-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://mainnet.base.org",
         chainId: 8453
     },
     arbitrum: {
         name: "Arbitrum",
-        rpcUrl: "wss://arbitrum-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://arb1.arbitrum.io/rpc",
         chainId: 42161
     },
     optimism: {
         name: "Optimism",
-        rpcUrl: "wss://optimism-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://mainnet.optimism.io",
         chainId: 10
     },
     avalanche: {
         name: "Avalanche",
-        rpcUrl: "wss://avalanche-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
+        rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
         chainId: 43114
     }
 };
@@ -185,7 +185,11 @@ function startChainListener(chainKey, config, wallet) {
     const connect = () => {
         try {
             console.log(`🔗 Connecting to ${config.name}...`);
-            const provider = new ethers.WebSocketProvider(config.rpcUrl);
+            // Switch to JsonRpcProvider for broader public compatibility if WSS fails
+            const provider = config.rpcUrl.startsWith('wss')
+                ? new ethers.WebSocketProvider(config.rpcUrl)
+                : new ethers.JsonRpcProvider(config.rpcUrl);
+
             const connectedWallet = wallet.connect(provider);
 
             provider.on("error", (error) => {

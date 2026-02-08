@@ -9,6 +9,10 @@ const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfa
 export const metadata: Metadata = {
     title: "TRACE | Reward Your On-Chain History",
     description: "Your on-chain history echoes forever. Let Tracy AI Agent authenticate your contributions and secure your rewards.",
+    icons: {
+        icon: "/images/Logo.jpg",
+        apple: "/images/Logo.jpg",
+    },
     openGraph: {
         title: "TRACE | Reward Your On-Chain History",
         description: "Your on-chain history echoes forever. Trace it. Earn for it.",
