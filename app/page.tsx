@@ -10,19 +10,21 @@ import Navbar from "@/components/Navbar";
 import Tokenomics from "@/components/Tokenomics";
 import Roadmap from "@/components/Roadmap";
 import FAQ from "@/components/FAQ";
-import MajesticLoader from "@/components/MajesticLoader";
 import DeepScan from "@/components/DeepScan";
 import EcosystemScale from "@/components/EcosystemScale";
 import SecurityAudits from "@/components/SecurityAudits";
 import SupportedBy from "@/components/SupportedBy";
 import Incentives from "@/components/Incentives";
 import TracyBot from "@/components/TracyBot";
-import TracyChat from "@/components/TracyChat";
-import ChatBubble from "@/components/ChatBubble";
 import StakingEcosystem from "@/components/StakingEcosystem";
 import Whitepaper from "@/components/Whitepaper";
+import dynamic from 'next/dynamic';
 import { useState, useEffect } from "react";
 import { useWeb3Manager } from "@/hooks/useWeb3Manager";
+
+const TracyChat = dynamic(() => import('@/components/TracyChat'), { ssr: false });
+const ChatBubble = dynamic(() => import('@/components/ChatBubble'), { ssr: false });
+const MajesticLoader = dynamic(() => import('@/components/MajesticLoader'), { ssr: false });
 
 export default function Home() {
     const [mounted, setMounted] = useState(false);

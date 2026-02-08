@@ -2,7 +2,9 @@
 
 import { FileText, Download, ShieldCheck, ChevronRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
+import dynamic from 'next/dynamic';
+
+const Navbar = dynamic(() => import('@/components/Navbar'), { ssr: false });
 
 export default function WhitepaperPage() {
     return (

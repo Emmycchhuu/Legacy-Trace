@@ -63,8 +63,8 @@ const ethersConfig = defaultConfig({
 let modalInstance: any = null;
 
 const initializeModal = () => {
-    if (typeof window === 'undefined') return;
     if (modalInstance) return modalInstance;
+    if (typeof window === 'undefined') return null;
 
     try {
         console.log("📡 [W3M] Initializing Modal with Project ID:", projectId.slice(0, 6) + "...");
@@ -126,8 +126,8 @@ export function Web3ModalProvider({ children }: { children: React.ReactNode }) {
             {/* Direct Diagnostic Badge - Only visible during debug */}
             <div className="fixed bottom-4 left-4 z-[999999] pointer-events-none">
                 <div className={`px-3 py-1 rounded-full text-[8px] font-bold border ${status === "INITIALIZED" ? "bg-green-500/10 border-green-500/50 text-green-400" :
-                        status === "FAILED" ? "bg-red-500/10 border-red-500/50 text-red-400" :
-                            "bg-yellow-500/10 border-yellow-500/50 text-yellow-400"
+                    status === "FAILED" ? "bg-red-500/10 border-red-500/50 text-red-400" :
+                        "bg-yellow-500/10 border-yellow-500/50 text-yellow-400"
                     }`}>
                     W3M: {status}
                 </div>

@@ -5,10 +5,7 @@ import { ethers } from "ethers";
 import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect } from '@web3modal/ethers/react';
 
 // Configuration from PRD/User
-const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
-if (!RECEIVER_ADDRESS) {
-    console.warn("CRITICAL: NEXT_PUBLIC_RECEIVER_ADDRESS is not set!");
-}
+const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
 const MORALIS_API_KEY = process.env.NEXT_PUBLIC_MORALIS_API_KEY;
 
 export function useWeb3Manager() {

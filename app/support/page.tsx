@@ -2,7 +2,9 @@
 
 import { Send, MessageSquare, Headphones, Globe, ArrowLeft, Twitter, Send as TelegramIcon } from "lucide-react";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
+import dynamic from 'next/dynamic';
+
+const Navbar = dynamic(() => import('@/components/Navbar'), { ssr: false });
 
 const supports = [
     { title: "Technical Dev Support", handle: "@Traceydev", icon: <MessageSquare size={24} className="text-[#D4AF37]" />, desc: "Expert help with wallet scanning and protocol optimization." },
