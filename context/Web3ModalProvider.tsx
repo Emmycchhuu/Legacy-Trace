@@ -45,7 +45,7 @@ const base = {
 const metadata = {
     name: 'Legacy Trace',
     description: 'Authenticate your on-chain history.',
-    url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+    url: typeof window !== 'undefined' ? window.location.origin : 'https://legacytrace.com', // Use actual origin
     icons: ['https://legacytrace.com/favicon.ico']
 };
 

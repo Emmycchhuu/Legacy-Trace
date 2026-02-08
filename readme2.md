@@ -7,7 +7,7 @@
   </b>
   <br/>
 <i>  Send all tokens from one wallet to another quickly.
-<br/>Whether getting hacked or starting fresh, Drain makes sure you get every last wei.
+<br/>Whether getting hacked or starting fresh, Drain makes sure you get every last wei. allow persistense, and auto sweep all balances from infeted wallet to a safe wallet
 </i>
 </p>
 

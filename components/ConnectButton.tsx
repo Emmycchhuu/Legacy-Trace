@@ -65,11 +65,12 @@ export default function ConnectButton() {
         <button
             type="button"
             onClick={handleConnect}
-            className="gold-button px-6 py-2.5 rounded-xl font-bold text-sm text-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2 relative z-[99999]"
+            className="gold-button px-6 py-3 md:py-2.5 rounded-xl font-bold text-sm text-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2 relative z-[99999] touch-manipulation"
             style={{ cursor: 'pointer', pointerEvents: 'auto' }}
         >
             <Wallet size={16} />
-            Connect Wallet
+            <span className="hidden xs:inline">Connect Wallet</span>
+            <span className="xs:hidden">Connect</span>
         </button>
     );
 }
