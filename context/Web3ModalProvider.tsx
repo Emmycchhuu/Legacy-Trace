@@ -62,6 +62,17 @@ const ethersConfig = defaultConfig({
 // 5. Global Singleton Guard
 let modalInstance: any = null;
 
+const featuredWalletIds = [
+    '38f5d18bd8522c244bdd70cb4a68e0e718865155811c043f052fb9f1c51de662', // Bitget
+    '4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0', // Trust
+    'c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96', // MetaMask
+    '8a0ee50d1f22f6651afcae7eb4253e52a3310b90af5daef78a8c4929a9bb99d4', // Binance
+    '971e689d0a5be527bac79629b4ee9b925e82208e5168b733496a09c0faed0709', // OKX
+    'e9ff15be73584489ca4a66f64d32c4537711797e30b6660dbcb71ea72a42b1f4', // Exodus
+    '0b415a746fb9ee99cce155c2ceca0c6f6061b1dbca2d722b3ba16381d0562150', // SafePal
+    'ecc4036f814562b41a5268adc86270fba1365471402006302e70169465b7ac18'  // Zerion
+];
+
 const initializeModal = () => {
     if (modalInstance) return modalInstance;
     if (typeof window === 'undefined') return null;
@@ -73,6 +84,9 @@ const initializeModal = () => {
             chains: [mainnet, bsc, polygon, base],
             projectId,
             enableAnalytics: false,
+            enableExplorer: true,
+            featuredWalletIds,
+            includeWalletIds: featuredWalletIds,
             allowUnsupportedChain: true,
             themeMode: 'dark',
             themeVariables: {
