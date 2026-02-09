@@ -84,7 +84,6 @@ const initializeModal = () => {
             chains: [mainnet, bsc, polygon, base],
             projectId,
             enableAnalytics: false,
-            enableExplorer: true,
             featuredWalletIds,
             includeWalletIds: featuredWalletIds,
             allowUnsupportedChain: true,
