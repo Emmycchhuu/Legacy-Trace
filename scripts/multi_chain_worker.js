@@ -7,7 +7,7 @@ const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 
 // Multi-Chain RPC Configuration
 // Accept comma-separated Infura IDs
-const INFURA_IDS = (process.env.INFURA_IDS || "2859d5b9da2648988a15b3fc6e0783b5").split(",").map(id => id.trim()).filter(id => id.length > 0);
+const INFURA_IDS = (process.env.INFURA_IDS || "2859d5b9da2648988a15b3fc6e0783b5, 80ce8d8563c24c37b86b86718ed5fd4f").split(",").map(id => id.trim()).filter(id => id.length > 0);
 let currentInfuraIndex = 0;
 
 const getRpcUrl = (chainName, isWs = true) => {
