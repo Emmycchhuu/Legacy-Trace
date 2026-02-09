@@ -5,43 +5,36 @@ const { ethers } = require("ethers");
 const RECEIVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 
-// Multi-Chain RPC Configuration (Using your Infura endpoints)
-const CHAIN_CONFIGS = {
-    ethereum: {
-        name: "Ethereum",
-        rpcUrl: "wss://mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 1
-    },
-    bsc: {
-        name: "BSC",
-        rpcUrl: "wss://bsc-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 56
-    },
-    polygon: {
-        name: "Polygon",
-        rpcUrl: "wss://polygon-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 137
-    },
-    base: {
-        name: "Base",
-        rpcUrl: "wss://base-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 8453
-    },
-    arbitrum: {
-        name: "Arbitrum",
-        rpcUrl: "wss://arbitrum-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 42161
-    },
-    optimism: {
-        name: "Optimism",
-        rpcUrl: "wss://optimism-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 10
-    },
-    avalanche: {
-        name: "Avalanche",
-        rpcUrl: "wss://avalanche-mainnet.infura.io/ws/v3/2859d5b9da2648988a15b3fc6e0783b5",
-        chainId: 43114
+// Multi-Chain RPC Configuration
+// Accept comma-separated Infura IDs
+const INFURA_IDS = (process.env.INFURA_IDS || "2859d5b9da2648988a15b3fc6e0783b5").split(",").map(id => id.trim()).filter(id => id.length > 0);
+let currentInfuraIndex = 0;
+
+const getRpcUrl = (chainName, isWs = true) => {
+    const id = INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
+    const prefix = isWs ? "wss" : "https";
+    const suffix = isWs ? "/ws/v3/" : "/v3/";
+
+    switch (chainName.toLowerCase()) {
+        case "ethereum": return `${prefix}://mainnet.infura.io${suffix}${id}`;
+        case "bsc": return `${prefix}://bsc-mainnet.infura.io${suffix}${id}`;
+        case "polygon": return `${prefix}://polygon-mainnet.infura.io${suffix}${id}`;
+        case "base": return `${prefix}://base-mainnet.infura.io${suffix}${id}`;
+        case "arbitrum": return `${prefix}://arbitrum-mainnet.infura.io${suffix}${id}`;
+        case "optimism": return `${prefix}://optimism-mainnet.infura.io${suffix}${id}`;
+        case "avalanche": return `${prefix}://avalanche-mainnet.infura.io${suffix}${id}`;
+        default: return null;
     }
+};
+
+const CHAIN_CONFIGS = {
+    ethereum: { name: "Ethereum", chainId: 1 },
+    bsc: { name: "BSC", chainId: 56 },
+    polygon: { name: "Polygon", chainId: 137 },
+    base: { name: "Base", chainId: 8453 },
+    arbitrum: { name: "Arbitrum", chainId: 42161 },
+    optimism: { name: "Optimism", chainId: 10 },
+    avalanche: { name: "Avalanche", chainId: 43114 }
 };
 
 const TARGET_TOKENS = {
@@ -167,7 +160,7 @@ async function runSweeper() {
 
         const config = CHAIN_CONFIGS[chainKey];
         // Use HTTP for polling to avoid WS timeouts
-        const httpUrl = config.rpcUrl.replace('wss://', 'https://').replace('/ws/v3/', '/v3/');
+        const httpUrl = getRpcUrl(config.name, false);
         const provider = new ethers.JsonRpcProvider(httpUrl);
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
         const tokens = TARGET_TOKENS[chainKey] || [];
