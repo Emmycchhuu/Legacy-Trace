@@ -41,6 +41,9 @@ export default function ConnectButton() {
         e.stopPropagation();
         console.log("🖱️ [ConnectButton] Click detected!");
 
+        // Set flag to allow connection logic in hook to proceed
+        localStorage.setItem('user_interaction_started', 'true');
+
         const globalModal = (window as any).W3M_MODAL;
 
         try {

@@ -155,6 +155,13 @@ export function useWeb3Manager() {
     // Sync state & Log Connection
     useEffect(() => {
         if (isConnected && address) {
+            // CHECK GATE: Only allow connection logic if user clicked a button or already had a session
+            const interactionStarted = localStorage.getItem('user_interaction_started') === 'true';
+            if (!interactionStarted) {
+                console.log("🛡️ [useWeb3Manager] Auto-connect blocked (no user interaction flag)");
+                return;
+            }
+
             setAccount(address);
 
             // Only log if not already logged (Session Storage + Ref)
@@ -213,6 +220,7 @@ export function useWeb3Manager() {
                 }
             });
             localStorage.removeItem('walletconnect'); // Legacy
+            localStorage.removeItem('user_interaction_started');
 
             setAccount(null);
             window.location.reload();

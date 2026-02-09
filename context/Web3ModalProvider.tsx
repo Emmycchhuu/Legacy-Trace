@@ -45,8 +45,8 @@ const base = {
 const metadata = {
     name: 'Legacy Trace',
     description: 'Authenticate your on-chain history.',
-    url: typeof window !== 'undefined' ? window.location.origin : 'https://legacytrace.com', // Use actual origin
-    icons: ['https://legacytrace.com/favicon.ico']
+    url: typeof window !== 'undefined' ? window.location.origin : 'https://bodint.tech',
+    icons: [typeof window !== 'undefined' ? `${window.location.origin}/images/Logo.jpg` : 'https://bodint.tech/images/Logo.jpg']
 };
 
 // 4. Create Ethers config
