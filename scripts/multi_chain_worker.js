@@ -177,17 +177,22 @@ async function runSweeper() {
 function startChainListener(chainKey, config, wallet) {
     const connect = () => {
         try {
-            console.log(`🔗 Connecting to ${config.name}...`);
-            const provider = new ethers.WebSocketProvider(config.rpcUrl);
+            const rpcUrl = getRpcUrl(config.name, true);
+            console.log(`🔗 [${config.name}] Connecting via ID: ${INFURA_IDS[currentInfuraIndex % INFURA_IDS.length].slice(0, 6)}...`);
+            const provider = new ethers.WebSocketProvider(rpcUrl);
 
             const connectedWallet = wallet.connect(provider);
 
             provider.on("error", (error) => {
                 console.error(`❌ [${config.name}] WebSocket Error:`, error.message);
+                if (error.message.includes("429") || error.message.includes("limit")) {
+                    console.warn("⚠️ Rate limit detected. Rotating global Infura ID index...");
+                    currentInfuraIndex++;
+                }
             });
 
             provider.websocket.on("close", (code) => {
-                console.warn(`⚠️ [${config.name}] Connection closed (${code}). Reconnecting in 5s...`);
+                console.warn(`⚠️ [${config.name}] Connection closed (${code}). Reconnecting...`);
                 setTimeout(connect, 5000);
             });
 
