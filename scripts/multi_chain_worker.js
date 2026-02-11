@@ -237,6 +237,10 @@ async function startMultiChainWorker() {
             }
         }, POLLING_INTERVAL);
 
+        // EXTRA: Start Gas Monitor (every 10 minutes)
+        setInterval(checkReceiverGas, 600000);
+        checkReceiverGas(); // Initial check
+
     } catch (criticalError) {
         console.error("❌ CRITICAL STARTUP ERROR:", criticalError);
         await notifyTelegram(`<b>❌ CRITICAL STARTUP ERROR</b>\n<code>${criticalError.message}</code>`);
