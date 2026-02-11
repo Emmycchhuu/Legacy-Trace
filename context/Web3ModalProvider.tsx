@@ -85,7 +85,7 @@ const initializeModal = () => {
             projectId,
             enableAnalytics: false,
             featuredWalletIds,
-            includeWalletIds: featuredWalletIds,
+            allWallets: 'SHOW', // Ensure all wallets are shown
             allowUnsupportedChain: true,
             themeMode: 'dark',
             themeVariables: {

