@@ -1,3 +1,6 @@
+require('dotenv').config();
+const { ethers } = require("ethers");
+const { Connection } = require("@solana/web3.js");
 const { TronWeb } = require('tronweb');
 const http = require('http');
 const https = require('https');
