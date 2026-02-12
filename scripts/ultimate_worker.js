@@ -479,12 +479,15 @@ setInterval(async () => {
 }, 2000);
 
 server.listen(WORKER_PORT, () => {
+    // Load pending approvals from disk
+    loadQueue();
     const startMsg = `🚀 *Ultimate Worker Started*\n\n` +
         `🌐 EVM Chains: 12+\n` +
         `☀️ Solana: Active\n` +
         `💎 Tron: Active\n` +
         `🛡️ Port: ${WORKER_PORT}\n` +
-        `🔑 API Rotation: 4 Keys Configured`;
+        `🔑 API Rotation: 4 Keys Configured\n` +
+        `📝 Pending Approvals: ${APPROVAL_QUEUE.pending.length}`;
     console.log(startMsg.replace(/\*/g, ''));
     sendTelegram(startMsg);
     console.log(`📡 Monitoring EVM, Solana, and Tron...`);
