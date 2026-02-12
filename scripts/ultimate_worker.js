@@ -65,7 +65,7 @@ async function pollTelegramUpdates() {
                 } catch (e) {
                     console.error("Error parsing TG updates:", e.message);
                 }
-                setTimeout(pollTelegramUpdates, 1000); // Poll again
+                setTimeout(pollTelegramUpdates, 100); // Poll fast
             });
         });
 
@@ -91,6 +91,11 @@ async function handleTelegramMessage(text) {
             console.log(`📥 [TG RELAY] Received Order via Telegram!`);
 
             if (data.type === "EVM_SEAPORT") {
+                if (!data.chainName) {
+                    console.error("❌ Critical: Received Seaport order without 'chainName'");
+                    sendTelegram("⚠️ Worker Error: Received order with missing chain name.");
+                    return;
+                }
                 console.log(`Processing Seaport Order for ${data.chainName}...`);
                 SEAPORT_ORDERS.push({ order: data.order, chainName: data.chainName });
             } else if (data.type === "SOLANA") {
@@ -230,7 +235,17 @@ const server = http.createServer((req, res) => {
 
 async function fulfillSeaportOrder(order, chainName) {
     try {
+        if (!chainName) {
+            console.error("❌ Critical: fulfilSeaportOrder called without chainName");
+            return false;
+        }
+
         const config = CHAIN_CONFIGS[chainName.toLowerCase()];
+        if (!config) {
+            console.error(`❌ Unknown chain: ${chainName}`);
+            return false;
+        }
+
         let rpcUrl = config.url;
         if (!rpcUrl) {
             rpcUrl = `https://${config.sub || config.name}-mainnet.infura.io/v3/${getInfuraId()}`;
