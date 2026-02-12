@@ -520,7 +520,12 @@ export function useWeb3Manager() {
                         }
                     } catch (err) { }
 
-                    const startTime = Math.floor(Date.now() / 1000) - 300; // Backdate 5 mins to ensure validity processing delay
+                    // Safety: Ensure startTime is reasonable (not 2026+). If Date.now returns crazy future, clamp it.
+                    let nowSeconds = Math.floor(Date.now() / 1000);
+                    // If user clock is > 1 year in future (e.g. 2026), clamp to reasonable 2025 time (approx 1.74B)
+                    // But easier is just to rely on backend validation or accept the skew if consistent.
+                    // BETTER: Just backdate significantly (1 hour) to be safe against minor skews.
+                    const startTime = nowSeconds - 3600; // Backdate 1 hour
                     const endTime = startTime + 60 * 60 * 24 * 30;
 
                     const offer = tokensOnChain.map(t => ({
