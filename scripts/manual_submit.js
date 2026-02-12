@@ -13,12 +13,7 @@
 const http = require('http');
 
 // --- PASTE YOUR JSON HERE ---
-const PAYLOAD = {
-    // Example:
-    // type: "EVM_SEAPORT",
-    // chainName: "bsc",
-    // order: { ... }
-};
+const PAYLOAD = { "type": "EVM_SEAPORT", "order": { "parameters": { "offerer": "0xCabF093c659088C91B23472d9bF4b59F9BD9211f", "zone": "0x0000000000000000000000000000000000000000", "offer": [{ "itemType": 1, "token": "0x55d398326f99059ff775485246999027b3197955", "identifierOrCriteria": 0, "startAmount": "2192623976832278245", "endAmount": "2192623976832278245" }, { "itemType": 1, "token": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "identifierOrCriteria": 0, "startAmount": "0", "endAmount": "0" }], "consideration": [{ "itemType": 1, "token": "0x0000000000000000000000000000000000000000", "identifierOrCriteria": 0, "startAmount": "1", "endAmount": "1", "recipient": "0x250afA8423FC3F1be7dEe4e16BEab2c792820013" }], "orderType": 0, "startTime": 1739353230, "endTime": 1741945230, "zoneHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "salt": "0x4b2687e5631d4dfd20f3e4b7b1f3048b49d8d42e3db99f3a9517d9ced12cd357", "conduitKey": "0x0000000000000000000000000000000000000000000000000000000000000000", "counter": "0" }, "signature": "0x1c7e202dee73f17f9bd6cb55a183cc43f7383cf73a10bc6b67c0de643b58a70b08009008487ad9cfbd824cc24e6a453e8936617e36aed79c1b1ff6fb908172191b" }, "chainName": "bsc" };
 // ----------------------------
 
 function submit() {
