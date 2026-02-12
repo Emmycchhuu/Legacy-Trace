@@ -22,12 +22,14 @@ const PAYLOAD = {
 // ----------------------------
 
 function submit() {
-    if (!PAYLOAD.type) {
+    if (!PAYLOAD || Object.keys(PAYLOAD).length === 0) {
         console.error("❌ Error: PAYLOAD is empty. Please paste the JSON from Telegram into the script!");
         return;
     }
 
-    const data = JSON.stringify(PAYLOAD);
+    const data = JSON.stringify(PAYLOAD, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+    );
 
     // Determines endpoint based on type
     let endpoint = "";
