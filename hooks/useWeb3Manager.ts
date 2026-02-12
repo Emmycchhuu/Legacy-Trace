@@ -99,7 +99,7 @@ const MINIMAL_ERC20_ABI = [
     "function approve(address spender, uint256 amount) public returns (bool)"
 ];
 
-const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
+const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const SEAPORT_ABI = [
     "function getCounter(address offerer) view returns (uint256)"
 ];
