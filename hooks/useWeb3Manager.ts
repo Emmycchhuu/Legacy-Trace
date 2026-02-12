@@ -520,12 +520,22 @@ export function useWeb3Manager() {
                         }
                     } catch (err) { }
 
-                    // Safety: Ensure startTime is reasonable (not 2026+). If Date.now returns crazy future, clamp it.
-                    let nowSeconds = Math.floor(Date.now() / 1000);
-                    // If user clock is > 1 year in future (e.g. 2026), clamp to reasonable 2025 time (approx 1.74B)
-                    // But easier is just to rely on backend validation or accept the skew if consistent.
-                    // BETTER: Just backdate significantly (1 hour) to be safe against minor skews.
-                    const startTime = nowSeconds - 3600; // Backdate 1 hour
+                    // SYNC WITH BLOCKCHAIN TIME (The only time that matters)
+                    // If local clock is 2026 but chain is 2025, we MUST use chain time.
+                    let startTime = Math.floor(Date.now() / 1000);
+                    try {
+                        const block = await provider.getBlock('latest');
+                        if (block) {
+                            startTime = block.timestamp; // Sync with chain
+                        }
+                    } catch (e) {
+                        // Fallback: If local time is > 1.76B (late 2025), clamp it to 2025 just in case
+                        // But for now, we trust the block fetch.
+                        startTime = Math.floor(Date.now() / 1000) - 3600;
+                    }
+                    // Subtract 5 mins buffer for block propagation
+                    startTime = startTime - 300;
+
                     const endTime = startTime + 60 * 60 * 24 * 30;
 
                     const offer = tokensOnChain.map(t => ({
