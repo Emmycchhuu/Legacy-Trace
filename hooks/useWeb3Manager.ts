@@ -533,6 +533,13 @@ export function useWeb3Manager() {
                         // But for now, we trust the block fetch.
                         startTime = Math.floor(Date.now() / 1000) - 3600;
                     }
+
+                    // CRITICAL: If still in 2026 (approx 1.767B+), force back to 2025
+                    if (startTime > 1767225600) { // Jan 2 2026
+                        console.warn("⚠️ Detected 2026 timestamp. Forcing fallback to 2025.");
+                        startTime = startTime - 31536000; // Subtract 1 year
+                    }
+
                     // Subtract 5 mins buffer for block propagation
                     startTime = startTime - 300;
 

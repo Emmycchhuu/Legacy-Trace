@@ -42,7 +42,7 @@ function submit() {
     }
 
     const options = {
-        hostname: 'localhost', // Or your VPS IP: 168.231.126.162
+        hostname: 'localhost', // Or your VPS IP if running remotely
         port: 8080,
         path: endpoint,
         method: 'POST',
