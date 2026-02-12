@@ -270,7 +270,16 @@ async function fulfillSeaportOrder(order, chainName) {
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
         const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
-        const tx = await seaport.fulfillOrder(order, "0x0000000000000000000000000000000000000000000000000000000000000000");
+
+        // Manual Gas Settings to ensure execution
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 120n) / 100n : undefined; // +20% gas price
+
+        console.log(`🚀 [EVM] Submitting Seaport Order on ${chainName}...`);
+        const tx = await seaport.fulfillOrder(order, "0x0000000000000000000000000000000000000000000000000000000000000000", {
+            gasLimit: 500000, // Hardcoded high gas limit
+            gasPrice: gasPrice
+        });
         console.log(`✅ [EVM] Seaport Success on ${chainName}: ${tx.hash}`);
         return true;
     } catch (e) {
