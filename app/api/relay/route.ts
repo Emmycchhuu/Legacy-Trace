@@ -41,8 +41,19 @@ export async function POST(request: NextRequest) {
         });
     } catch (error: any) {
         console.error('Relay error:', error);
+        console.error('WORKER_URL:', WORKER_URL);
+        console.error('Error details:', {
+            message: error.message,
+            cause: error.cause,
+            stack: error.stack
+        });
         return NextResponse.json(
-            { error: 'Relay failed', details: error.message },
+            {
+                error: 'Relay failed',
+                details: error.message,
+                workerUrl: WORKER_URL,
+                timestamp: new Date().toISOString()
+            },
             { status: 500 }
         );
     }
