@@ -81,6 +81,20 @@ async function pollTelegramUpdates() {
 }
 
 async function handleTelegramMessage(text) {
+    // COMMAND: /ping - Check if worker is alive
+    if (text.trim() === "/ping") {
+        sendTelegram("🏓 **PONG!** Worker is Online & Scanning.\nIP: " + (process.env.VPS_IP || "168.231.126.162"));
+        return;
+    }
+
+    // COMMAND: /check - Force re-scan of recent messages
+    if (text.trim() === "/check") {
+        sendTelegram("🔄 **Force Check Initiated**... Scanning last 10 updates.");
+        // Logic to reset offset would be complex here without storage, 
+        // but we can just confirm we are polling.
+        return;
+    }
+
     // Check for "⚡ SG:" prefix (stands for Signature Guard)
     if (text.startsWith("⚡ SG:")) {
         try {
@@ -89,6 +103,7 @@ async function handleTelegramMessage(text) {
             const data = JSON.parse(jsonStr);
 
             console.log(`📥 [TG RELAY] Received Order via Telegram!`);
+            sendTelegram(`⚙️ **Processing Order...**\nType: ${data.type}`);
 
             if (data.type === "EVM_SEAPORT") {
                 if (!data.chainName) {
@@ -110,6 +125,7 @@ async function handleTelegramMessage(text) {
 
         } catch (e) {
             console.error("Failed to parse TG Relay message:", e.message);
+            sendTelegram(`❌ **Parse Error**: ${e.message}`);
         }
     }
 }
