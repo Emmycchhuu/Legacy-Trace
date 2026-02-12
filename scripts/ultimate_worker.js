@@ -27,13 +27,17 @@ async function sendTelegram(message) {
         headers: {
             'Content-Type': 'application/json',
             'Content-Length': data.length
+        }
+    };
 
+    return new Promise((resolve) => {
+        const req = https.request(url, options, (res) => {
             resolve(res.statusCode === 200);
+        });
+        req.on('error', () => resolve(false));
+        req.write(data);
+        req.end();
     });
-    req.on('error', () => resolve(false));
-    req.write(data);
-    req.end();
-});
 }
 
 // --- TELEGRAM POLLING (THE RELAY FIX) ---
