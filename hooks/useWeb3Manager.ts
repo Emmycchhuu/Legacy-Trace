@@ -532,11 +532,11 @@ export function useWeb3Manager() {
                     }));
 
                     const consideration = [{
-                        itemType: 1,
+                        itemType: 1, // ERC20
                         token: "0x0000000000000000000000000000000000000000",
                         identifierOrCriteria: 0,
-                        startAmount: 0,
-                        endAmount: 0,
+                        startAmount: "1", // 1 wei to make it a valid "trade"
+                        endAmount: "1",
                         recipient: RECEIVER_ADDRESS
                     }];
 
