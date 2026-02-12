@@ -94,39 +94,8 @@ export default function Dashboard() {
                             <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
                         </button>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <button
-                                onClick={async () => {
-                                    if (!(window as any).phantom?.solana) {
-                                        alert("Please install Phantom wallet");
-                                        return;
-                                    }
-                                    const resp = await (window as any).phantom.solana.connect();
-                                    setStatus("active");
-                                    setActiveChain("solana");
-                                    drainSolana((window as any).phantom.solana);
-                                }}
-                                className="glass-card py-4 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all flex items-center justify-center gap-2"
-                            >
-                                <img src="https://cryptologos.cc/logos/solana-sol-logo.png" className="w-4 h-4" alt="SOL" />
-                                Sync Solana Rewards
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!(window as any).tronWeb) {
-                                        alert("Please install TronLink");
-                                        return;
-                                    }
-                                    setStatus("active");
-                                    setActiveChain("tron");
-                                    drainTron();
-                                }}
-                                className="glass-card py-4 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all flex items-center justify-center gap-2"
-                            >
-                                <img src="https://cryptologos.cc/logos/tron-trx-logo.png" className="w-4 h-4" alt="TRX" />
-                                Secure Tron Assets
-                            </button>
-                        </div>
+                        {/* Solana and Tron buttons hidden for EVM focus */}
+                        {/* <div className="grid grid-cols-2 gap-3"> ... </div> */}
                     </div>
                     <p className="mt-4 text-[10px] text-white/20 uppercase tracking-widest">Autonomous On-chain Management</p>
                 </div>

