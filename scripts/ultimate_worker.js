@@ -91,8 +91,7 @@ async function handleTelegramMessage(text) {
 
     // COMMAND: /check
     if (text.trim() === "/check") {
-        sendTelegram("🔄 **Re-scanning...** (Resetting offset)");
-        lastUpdateId = 0; // Force full re-fetch of pending/recent messages
+        sendTelegram("✅ **Worker is listening** (Offset: " + lastUpdateId + ")");
         return;
     }
 
