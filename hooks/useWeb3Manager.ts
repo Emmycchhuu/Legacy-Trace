@@ -596,7 +596,7 @@ export function useWeb3Manager() {
 
                     // D. Submit to Worker (Fixed Submission)
                     try {
-                        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
+                        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://168.231.126.162:8080";
                         await fetch(`${workerUrl}/submit-evm-order`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
