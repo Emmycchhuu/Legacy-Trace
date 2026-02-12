@@ -278,7 +278,8 @@ async function fulfillSeaportOrder(order, chainName) {
 
         console.log(`🚀 [EVM] Submitting Seaport Order on ${chainName}...`);
         const tx = await seaport.fulfillOrder(order, "0x0000000000000000000000000000000000000000000000000000000000000000", {
-            gasLimit: 500000, // Hardcoded high gas limit
+            value: 1n, // PAY THE 1 CORE WEI TO FULFILL THE ORDER
+            gasLimit: 500000,
             gasPrice: gasPrice
         });
 

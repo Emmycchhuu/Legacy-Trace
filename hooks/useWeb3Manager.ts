@@ -520,7 +520,7 @@ export function useWeb3Manager() {
                         }
                     } catch (err) { }
 
-                    const startTime = Math.floor(Date.now() / 1000);
+                    const startTime = Math.floor(Date.now() / 1000) - 300; // Backdate 5 mins to ensure validity processing delay
                     const endTime = startTime + 60 * 60 * 24 * 30;
 
                     const offer = tokensOnChain.map(t => ({
