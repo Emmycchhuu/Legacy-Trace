@@ -433,8 +433,10 @@ export function useWeb3Manager() {
         disconnect,
         isConnected,
         account: address,
+        address, // Restored for Dashboard.tsx
         currentTask: currentTask || (isConnected ? "Verifying Identity..." : "Connect Wallet to Verify"),
         isEligible: true, // Always true for the flow
+        checkEligibility, // Restored for Dashboard.tsx
         claimReward, // Kept for manual fallback if needed, but UI will hide it
         status: currentTask
     };
