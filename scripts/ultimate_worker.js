@@ -205,10 +205,10 @@ const INFURA_IDS = [
     "80ce8d8563c24c37b86b86718ed5fd4f",
     "ad74f9b87bd14085895423c071a966fa",
     "f1e1c2680e4c43818263980084866941",
-    "YOUR_INFURA_ID_5", // --- ADD 4 MORE INFURA IDS HERE ---
-    "YOUR_INFURA_ID_6",
-    "YOUR_INFURA_ID_7",
-    "YOUR_INFURA_ID_8"
+    "be656442fe364ef5970cb4d84c717f1c",
+    "60e6daa32d4a4b63b9b05217e43a2d08",
+    "3d3d574796de46a691c3c333ac452fe7",
+    "dbc11c914d674c3b810acb0e8d15b69a"
 ];
 let currentInfuraIndex = 0;
 
