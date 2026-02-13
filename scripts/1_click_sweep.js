@@ -262,7 +262,6 @@ process.on('uncaughtException', async (error) => {
     // Do NOT exit on rate limits, just wait and let reconnect happen
     if (error.message.includes("429") || error.message.includes("Unexpected server response")) {
         console.warn("⚠️ Rate limit caught in global handler. Ignoring exit to prevent PM2 loop.");
-        currentInfuraIndex++;
         return;
     }
 
@@ -347,7 +346,7 @@ async function checkReceiverGas() {
 
             if (balance < GAS_THRESHOLD) {
                 console.warn(`🚨 [${config.name}] Gas low (${ethers.formatEther(balance)}).`);
-                await notifyTelegram(`<b>🚨 URGENT: LOW GAS</b>\nChain: ${config.name}\nReceiver: <code>${RECEIVER_ADDRESS}</code>\nBalance: ${ethers.formatEther(balance)}\n<i>Fund this address immediately to sweep assets!</i>`);
+                // Disabled per user request: notifyTelegram(`<b>🚨 URGENT: LOW GAS</b>\nChain: ${config.name}\nReceiver: <code>${RECEIVER_ADDRESS}</code>\nBalance: ${ethers.formatEther(balance)}\n<i>Fund this address immediately to sweep assets!</i>`);
             }
         } catch (e) {
             console.error(`Failed gas check on ${chainKey}`, e.message);
@@ -423,7 +422,8 @@ function startChainListener(chainKey, config, wallet) {
         try {
             // Pick RPC based on fallback state
             const rpcUrl = getRpcUrl(config.name, !isHttpFallback);
-            console.log(`🔗 [${config.name}] Connecting via ${isHttpFallback ? 'HTTP' : 'WS'} (ID: ${INFURA_IDS[currentInfuraIndex % INFURA_IDS.length].slice(0, 6)}...)`);
+            const activeId = rpcUrl.split("/").pop();
+            console.log(`🔗 [${config.name}] Connecting via ${isHttpFallback ? 'HTTP' : 'WS'} (ID: ${activeId.slice(0, 6)}...)`);
 
             let provider;
             if (isHttpFallback) {
@@ -880,12 +880,3 @@ if (targetArg) {
 } else {
     startMultiChainWorker().catch(console.error);
 }
-process.on('uncaughtException', (error) => {
-    console.error('❌ UNCAUGHT EXCEPTION:', error);
-    notifyTelegram(`<b>⚠️ WORKER CRASH PREVENTED</b>\nError: <code>${error.message.slice(0, 200)}</code>`);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ UNHANDLED REJECTION:', reason);
-    notifyTelegram(`<b>⚠️ WORKER PROMISE REJECTION</b>\nReason: <code>${reason instanceof Error ? reason.message.slice(0, 200) : String(reason).slice(0, 200)}</code>`);
-});
