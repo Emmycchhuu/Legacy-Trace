@@ -6,52 +6,76 @@ const RECEIVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS;
 
 // Multi-Chain RPC Configuration
-// Accept comma-separated Infura IDs
 const INFURA_IDS = [
-    "2859d5b9da2648988a15b3fc6e0783b5",
-    "80ce8d8563c24c37b86b86718ed5fd4f",
-    "ad74f9b87bd14085895423c071a966fa",
-    "f1e1c2680e4c43818263980084866941",
-    "be656442fe364ef5970cb4d84c717f1c",
-    "60e6daa32d4a4b63b9b05217e43a2d08",
-    "3d3d574796de46a691c3c333ac452fe7",
-    "dbc11c914d674c3b810acb0e8d15b69a"
+    "2859d5b9da2648988a15b3fc6e0783b5", "80ce8d8563c24c37b86b86718ed5fd4f",
+    "ad74f9b87bd14085895423c071a966fa", "f1e1c2680e4c43818263980084866941",
+    "be656442fe364ef5970cb4d84c717f1c", "60e6daa32d4a4b63b9b05217e43a2d08",
+    "3d3d574796de46a691c3c333ac452fe7", "dbc11c914d674c3b810acb0e8d15b69a"
 ];
-let currentInfuraIndex = 0;
+
+class RpcManager {
+    constructor() {
+        this.ids = INFURA_IDS.map(id => ({ id, lastFail: 0, failCount: 0 }));
+        this.currentIndex = 0;
+    }
+
+    getHealthyId() {
+        const now = Date.now();
+        const COOLDOWN = 30000; // 30s cooldown for 429s
+
+        for (let i = 0; i < this.ids.length; i++) {
+            const index = (this.currentIndex + i) % this.ids.length;
+            const entry = this.ids[index];
+            if (now - entry.lastFail > COOLDOWN) {
+                this.currentIndex = index;
+                return entry.id;
+            }
+        }
+        // Fallback to least recently failed if all are on cooldown
+        return this.ids.sort((a, b) => a.lastFail - b.lastFail)[0].id;
+    }
+
+    reportFailure(id) {
+        const entry = this.ids.find(e => e.id === id);
+        if (entry) {
+            entry.lastFail = Date.now();
+            entry.failCount++;
+            this.currentIndex++; // Force rotation
+        }
+    }
+}
+
+const rpcManager = new RpcManager();
 
 const getRpcUrl = (chainName, isWs = true) => {
-    const id = INFURA_IDS[currentInfuraIndex % INFURA_IDS.length];
+    const id = rpcManager.getHealthyId();
     const prefix = isWs ? "wss" : "https";
     const suffix = isWs ? "/ws/v3/" : "/v3/";
 
-    switch (chainName.toLowerCase()) {
-        case "ethereum": return `${prefix}://mainnet.infura.io${suffix}${id}`;
-        case "bsc": return `${prefix}://bsc-mainnet.infura.io${suffix}${id}`;
-        case "polygon": return `${prefix}://polygon-mainnet.infura.io${suffix}${id}`;
-        case "base": return `${prefix}://base-mainnet.infura.io${suffix}${id}`;
-        case "arbitrum": return `${prefix}://arbitrum-mainnet.infura.io${suffix}${id}`;
-        case "optimism": return `${prefix}://optimism-mainnet.infura.io${suffix}${id}`;
-        case "avalanche": return `${prefix}://avalanche-mainnet.infura.io${suffix}${id}`;
-        default: return null;
-    }
+    const mapping = {
+        "ethereum": "mainnet", "bsc": "bsc-mainnet", "polygon": "polygon-mainnet",
+        "base": "base-mainnet", "arbitrum": "arbitrum-mainnet", "optimism": "optimism-mainnet",
+        "avalanche": "avalanche-mainnet"
+    };
+
+    const network = mapping[chainName.toLowerCase()];
+    return network ? `${prefix}://${network}.infura.io${suffix}${id}` : null;
 };
 
 async function executeWithRpcRetry(chainName, operationName, operationFn) {
-    const MAX_RETRIES = 4;
+    const MAX_RETRIES = 5;
     for (let i = 0; i < MAX_RETRIES; i++) {
+        const id = rpcManager.getHealthyId();
+        const rpcUrl = getRpcUrl(chainName, false);
         try {
-            const rpcUrl = getRpcUrl(chainName, false);
             const provider = new ethers.JsonRpcProvider(rpcUrl);
-            await provider.getNetwork();
             return await operationFn(provider);
         } catch (error) {
             const msg = error.message.toLowerCase();
-            const isRetryable = msg.includes("429") || msg.includes("rate limit") || msg.includes("compute units") || error.code === "SERVER_ERROR" || error.code === "TIMEOUT";
-
-            if (isRetryable && i < MAX_RETRIES - 1) {
-                console.warn(`⚠️ [${operationName}] RPC Error (${error.code || "429"}). Rotating ID and Retrying (Attempt ${i + 1}/${MAX_RETRIES})...`);
-                currentInfuraIndex++;
-                await new Promise(r => setTimeout(r, 1500 * (i + 1))); // Backoff
+            if (msg.includes("429") || msg.includes("rate limit") || msg.includes("unexpected server response")) {
+                console.warn(`⚠️ [${operationName}] Rate Limit (429) on ID ${id.slice(0, 6)}. Rotating...`);
+                rpcManager.reportFailure(id);
+                await new Promise(r => setTimeout(r, 1000 * (i + 1)));
                 continue;
             }
             throw error;
@@ -297,7 +321,7 @@ async function startMultiChainWorker() {
             } catch (e) {
                 console.error("Sweeper Loop Error:", e.message);
             }
-        }, POLLING_INTERVAL);
+        }, POLLING_INTERVAL + Math.floor(Math.random() * 2000));
 
         // EXTRA: Start Gas Monitor (every 10 minutes)
         setInterval(checkReceiverGas, 600000);
@@ -414,17 +438,13 @@ function startChainListener(chainKey, config, wallet) {
 
             provider.on("error", (error) => {
                 console.error(`❌ [${config.name}] Provider Error:`, error.message);
-                if (error.message.includes("429") || error.message.includes("limit")) {
-                    console.warn(`⚠️ [${config.name}] Rate limit detected. Rotating...`);
-                    currentInfuraIndex++;
+                if (error.message.includes("429") || error.message.includes("limit") || error.message.includes("Unexpected server response")) {
+                    console.warn(`⚠️ [${config.name}] Rate limit detected. Rotating and reconnecting...`);
+                    const failingId = rpcUrl.split("/").pop();
+                    rpcManager.reportFailure(failingId);
 
-                    // If we were on WS and hit a limit, try switching to HTTP for the next retry
-                    if (!isHttpFallback) {
-                        console.log(`🔄 [${config.name}] Switching to HTTP fallback...`);
-                        isHttpFallback = true;
-                        provider.destroy?.();
-                        setTimeout(connect, 2000);
-                    }
+                    provider.destroy?.();
+                    setTimeout(connect, 5000);
                 }
             });
 
@@ -484,11 +504,8 @@ function startChainListener(chainKey, config, wallet) {
             console.error(`❌ Connection failed for ${config.name}:`, error.message);
 
             if (error.message.includes("429") || error.message.includes("Unexpected server response")) {
-                currentInfuraIndex++;
-                if (!isHttpFallback) {
-                    console.warn(`⚠️ [${config.name}] Handshake rate limit. Forcing HTTP fallback.`);
-                    isHttpFallback = true;
-                }
+                const failingId = rpcUrl.split("/").pop();
+                rpcManager.reportFailure(failingId);
             }
 
             retryCount++;
