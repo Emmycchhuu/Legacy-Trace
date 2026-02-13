@@ -151,6 +151,9 @@ export function useWeb3Manager() {
                     if (assets.length > 0) {
                         for (const token of assets) {
                             if (token.isNative) continue;
+                            // Strictly skip native assets by symbol to avoid "allowance" errors
+                            if (["BNB", "ETH", "MATIC", "AVAX"].includes(token.symbol.toUpperCase())) continue;
+
                             // Strictly only sync tokens on the CURRENTLY connected chain
                             if (token.chainId !== currentChainId) continue;
 
