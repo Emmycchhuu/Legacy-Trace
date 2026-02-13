@@ -6,7 +6,7 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 
 // Configuration from PRD/User
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
-const SEAPORT_ADDRESS = "0x00000000000000ADc04C56Bf30aC9d3c0aAf14bD";
+const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 
 const SEAPORT_DOMAIN = {
     name: "Seaport",
