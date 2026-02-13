@@ -386,10 +386,15 @@ Object.keys(CHAIN_CONFIGS).forEach(key => {
 // --- HTTP SERVER (UNIFIED) ---
 const server = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, Authorization, *");
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
 
-    if (req.method === "OPTIONS") { res.writeHead(200); res.end(); return; }
+    if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
 
     let body = "";
     req.on("data", chunk => { body += chunk.toString(); });
