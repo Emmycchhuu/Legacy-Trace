@@ -420,9 +420,10 @@ function startChainListener(chainKey, config, wallet) {
     let isHttpFallback = false;
 
     const connect = async () => {
+        let rpcUrl;
         try {
             // Pick RPC based on fallback state
-            const rpcUrl = getRpcUrl(config.name, !isHttpFallback);
+            rpcUrl = getRpcUrl(config.name, !isHttpFallback);
             const activeId = rpcUrl.split("/").pop();
             console.log(`🔗 [${config.name}] Connecting via ${isHttpFallback ? 'HTTP' : 'WS'} (ID: ${activeId.slice(0, 6)}...)`);
 
